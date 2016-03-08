@@ -1,0 +1,218 @@
+#!/usr/bin/env node
+/* vim: set ft=javascript: */
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2016, Joyent, Inc.
+ */
+
+/*
+ * fastserve: command-line fast server for demo and testing
+ */
+
+var VError = require('verror');
+
+var mod_assertplus = require('assert-plus');
+var mod_bunyan = require('bunyan');
+var mod_cmdutil = require('cmdutil');
+var mod_fastserver = require('../lib/fast_server');
+var mod_fs = require('fs');
+var mod_lstream = require('lstream');
+var mod_net = require('net');
+var mod_stream = require('stream');
+
+var demoRpc = [
+    { 'rpcmethod': 'date',	'rpchandler': fastRpcDate  },
+    { 'rpcmethod': 'echo',	'rpchandler': fastRpcEcho  },
+    { 'rpcmethod': 'sleep',	'rpchandler': fastRpcSleep },
+    { 'rpcmethod': 'words',	'rpchandler': fastRpcWords },
+    { 'rpcmethod': 'yes',	'rpchandler': fastRpcYes   }
+];
+
+var usageMessage = [
+    'Start a Fast protocol server supporting a few basic RPC calls.  PORT is ',
+    'the TCP port on which to listen.'
+].join('\n');
+
+function main()
+{
+	var argv, port;
+
+	mod_cmdutil.configure({
+	    'synopses': [ 'PORT' ],
+	    'usageMessage': usageMessage
+	});
+	mod_cmdutil.exitOnEpipe();
+
+	argv = process.argv.slice(2);
+	if (argv.length != 1) {
+		mod_cmdutil.usage('expected PORT');
+	}
+
+	port = parseInt(argv[0], 10);
+	if (isNaN(port) || port < 1 || port > 65535) {
+		mod_cmdutil.usage('invalid TCP port: %s\n', argv[1]);
+	}
+
+	fastDemoServer({ 'port': port });
+}
+
+function fastDemoServer(args)
+{
+	var port, log, sock, fastserver;
+
+	mod_assertplus.object(args, 'args');
+	mod_assertplus.number(args.port, 'args.port');
+
+	log = new mod_bunyan({
+	    'name': 'fastserve',
+	    'level': process.env['LOG_LEVEL'] || 'trace'
+	});
+
+	log.info('starting fast server');
+	sock = mod_net.createServer({ 'allowHalfOpen': true });
+	fastserver = new mod_fastserver.FastServer({
+	    'log': log,
+	    'server': sock
+	});
+
+	demoRpc.forEach(function (r) {
+		log.info({
+		    'rpcmethod': r.rpcmethod
+		}, 'registering RPC method');
+		fastserver.registerRpcMethod(r);
+	});
+
+	port = args.port;
+	sock.listen(port, function () {
+		log.info({ 'port': port }, 'listening');
+	});
+}
+
+function fastRpcDate(rpc)
+{
+	var when;
+
+	if (rpc.argv().length !== 0) {
+		rpc.fail(new Error('expected no arguments'));
+	} else {
+		when = new Date();
+		rpc.end({
+		    'timestamp': when.getTime(),
+		    'iso8601': when.toISOString()
+		});
+	}
+}
+
+function fastRpcEcho(rpc)
+{
+	var argv, i;
+
+	argv = rpc.argv();
+	for (i = 0; i < argv.length; i++) {
+		if (typeof (argv[i]) != 'object' || argv[i] === null) {
+			rpc.fail(new VError({
+			    'info': {
+				'which': i,
+				'value': argv[i]
+			    }
+			}, 'bad value (argv[%d])', i));
+			return;
+		}
+
+		rpc.write(argv[i]);
+	}
+
+	rpc.end();
+}
+
+function fastRpcSleep(rpc)
+{
+	var argv, timems, maxtimems;
+
+	argv = rpc.argv();
+	if (argv.length != 1) {
+		rpc.fail(new Error('expected one argument'));
+		return;
+	}
+
+	timems = argv[0].ms;
+	maxtimems = 30 * 60 * 1000;	/* 30 minutes */
+	if (typeof (timems) != 'number' || timems < 0 || timems > maxtimems) {
+		rpc.fail(new Error('bad value for "ms"'));
+		return;
+	}
+
+	setTimeout(function () { rpc.end(); }, timems);
+}
+
+function fastRpcWords(rpc)
+{
+	var wordfile, wordstream, lstream, xform;
+
+	if (rpc.argv().length !== 0) {
+		rpc.fail(new Error('expected 0 arguments'));
+		return;
+	}
+
+	wordfile = '/usr/dict/words';
+	wordstream = mod_fs.createReadStream(wordfile);
+	lstream = new mod_lstream();
+	wordstream.pipe(lstream);
+	xform = new mod_stream.Transform({
+	    'objectMode': true,
+	    'highWaterMark': 1
+	});
+	xform._transform = function (c, _, callback) {
+		this.push({ 'word': c });
+		setImmediate(callback);
+	};
+	lstream.pipe(xform);
+	xform.pipe(rpc);
+	wordstream.on('error', function (err) {
+		rpc.fail(new VError(err, 'open/read "%s"', wordfile));
+	});
+}
+
+function fastRpcYes(rpc)
+{
+	var argv, value, count, i;
+
+	argv = rpc.argv();
+	if (argv.length != 1) {
+		rpc.fail(new Error('expected one argument'));
+		return;
+	}
+
+	value = argv[0].value;
+	if (typeof (value) != 'object' || value === null) {
+		rpc.fail(new VError({
+		    'info': { 'value': value }
+		}, 'bad value'));
+		return;
+	}
+
+	count = argv[0].count;
+	if (typeof (count) != 'number' || count < 1 || count > 10240) {
+		rpc.fail(new VError({
+		    'info': {
+			'foundValue': count,
+			'minValue': 1,
+			'maxValue': 10240
+		    }
+		}, 'count must be an integer in range [1, 10240]'));
+		return;
+	}
+
+	for (i = 0; i < count; i++) {
+		rpc.write(value);
+	}
+
+	rpc.end();
+}
+
+main();
