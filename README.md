@@ -253,10 +253,9 @@ they do not re-use a message identifier for separate requests.
 
 **Server sends data from an RPC call.**  RPC calls may emit an arbitrary number
 of values back to the client.  To emit these values, the server sends `DATA`
-messages with `data.d` set to the value to be emitted.  Only non-null object
-values may be sent this way.  All `DATA` messages for the same RPC request have
-the same message identifier that the client included in its original `DATA`
-message that initiated the RPC call.
+messages with `data.d` set to an array of values to be emitted.  All `DATA`
+messages for the same RPC request have the same message identifier that the
+client included in its original `DATA` message that initiated the RPC call.
 
 **Server completes an RPC call successfully.** When an RPC call completes
 successfully, the server sends an `END` event having the same message identifier

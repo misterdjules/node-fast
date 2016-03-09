@@ -119,23 +119,7 @@ function fastRpcDate(rpc)
 
 function fastRpcEcho(rpc)
 {
-	var argv, i;
-
-	argv = rpc.argv();
-	for (i = 0; i < argv.length; i++) {
-		if (typeof (argv[i]) != 'object' || argv[i] === null) {
-			rpc.fail(new VError({
-			    'info': {
-				'which': i,
-				'value': argv[i]
-			    }
-			}, 'bad value (argv[%d])', i));
-			return;
-		}
-
-		rpc.write(argv[i]);
-	}
-
+	rpc.argv().forEach(function (a) { rpc.write({ 'value': a }); });
 	rpc.end();
 }
 
@@ -198,13 +182,6 @@ function fastRpcYes(rpc)
 	}
 
 	value = argv[0].value;
-	if (typeof (value) != 'object' || value === null) {
-		rpc.fail(new VError({
-		    'info': { 'value': value }
-		}, 'bad value'));
-		return;
-	}
-
 	count = argv[0].count;
 	if (typeof (count) != 'number' || count < 1 || count > 10240) {
 		rpc.fail(new VError({
@@ -218,7 +195,7 @@ function fastRpcYes(rpc)
 	}
 
 	for (i = 0; i < count; i++) {
-		rpc.write(value);
+		rpc.write({ 'value': value });
 	}
 
 	rpc.end();
