@@ -260,6 +260,8 @@ client included in its original `DATA` message that initiated the RPC call.
 **Server completes an RPC call successfully.** When an RPC call completes
 successfully, the server sends an `END` event having the same message identifier
 as the one in the client's original `DATA` message that initiated the RPC call.
+This message can contain data as well, in which case it should be processed the
+same way as for a DATA message.
 
 **Server reports a failed RPC call.**  Any time before an `END` message is
 generated for an RPC call, the server may send an `ERROR` message having the
