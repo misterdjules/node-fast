@@ -89,7 +89,16 @@ function fastDemoServer(args)
 
 	port = args.port;
 	sock.listen(port, function () {
+		var nsigs = 0;
+
 		log.info({ 'port': port }, 'listening');
+
+		process.on('SIGINT', function () {
+			if (++nsigs == 1) {
+				sock.close();
+				fastserver.close();
+			}
+		});
 	});
 }
 

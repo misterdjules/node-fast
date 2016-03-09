@@ -163,6 +163,7 @@ Public methods:
 * `rpc.methodName()`: returns the client-specified name of this request
 * `rpc.argv()`: returns the arguments provided by the client for the request
 * `rpc.fail(err)`: report failure of the RPC request with the specified error
+* `close()`: shut down the server
 
 #### registerRpcMethod(args): register an RPC method handler
 
@@ -189,6 +190,21 @@ with its `end()` method.
 The handler should report failure by invoking `rpc.fail(err)`, where `err is an
 error describing the failure.  The handler should not emit data or end the
 request gracefully after reporting an error.
+
+#### close(): shut down the server
+
+This method shuts down the server by disconnecting outstanding requests from
+their underlying connections and then destroying those underlying client
+sockets.  **The consumer should close the underlying server socket first in
+order to ensure no new connections will be created.  Any newly-created
+connections will be dealt with, but without closing the server socket, there is
+no guarantee that this process will converge.**
+
+Since the interface for RPC handlers does not currently provide a way to inform
+those handlers that the request has been cancelled because of a case like this,
+handlers for outstanding requests continue as normal, and any data emitted is
+ignored.  As a result, though, these handlers may continue running even after
+this function has been called and client sockets are destroyed.
 
 
 ## Protocol overview
