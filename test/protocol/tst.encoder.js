@@ -20,6 +20,8 @@ var mod_path = require('path');
 var mod_protocol = require('../../lib/fast_protocol');
 var printf = mod_extsprintf.printf;
 
+var mod_testcommon = require('../common');
+
 var bigdata, bigdataval, test_cases;
 var circular = {};
 circular['a'] = 47;
@@ -29,7 +31,7 @@ function main()
 {
 	/* This object winds up being about 28MB encoded as JSON. */
 	printf('generating large object ... ');
-	bigdata = [ makeBigObject(10, 6) ];
+	bigdata = [ mod_testcommon.makeBigObject(10, 6) ];
 	bigdataval = JSON.stringify(bigdata);
 	printf('%d bytes (stringified)\n', bigdataval.length);
 
@@ -258,26 +260,6 @@ function runTestCase(testcase)
 	}
 
 	printf('ok\n');
-}
-
-function makeBigObject(width, depth)
-{
-	var i, rv;
-
-	mod_assertplus.ok(depth >= 1);
-	rv = {};
-	if (depth === 1) {
-		for (i = 0; i < width; i++) {
-			rv['prop_1_' + i] = 'prop_1_' + i + '_value';
-		}
-	} else {
-		for (i = 0; i < width; i++) {
-			rv['prop_' + depth + '_' + i] =
-			    makeBigObject(width, depth - 1);
-		}
-	}
-
-	return (rv);
 }
 
 main();
