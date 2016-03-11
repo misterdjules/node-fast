@@ -79,6 +79,8 @@ var sample_object = { 'd': [ { 'hello': 'world' } ] };
 var sample_data = JSON.stringify(sample_object);
 var sample_crc = mod_crc.crc16(sample_data);
 
+var sample_error = { 'd': { 'name': 'AnError', 'message': 'boom!' } };
+
 /* This object winds up being about 28MB encoded as JSON. */
 var big_object = { 'd': [ mod_testcommon.makeBigObject(10, 6) ] };
 var big_data = JSON.stringify(big_object);
@@ -126,14 +128,14 @@ test_cases = [ {
 }, {
     'name': 'basic ERROR message',
     'input': function () {
-	return (makeMessageForData(47, 0x3, sample_object));
+	return (makeMessageForData(47, 0x3, sample_error));
     },
     'check': function (error, data) {
 	mod_assertplus.ok(error === null);
 	mod_assertplus.equal(data.length, 1);
 	mod_assertplus.equal(data[0].msgid, 47);
 	mod_assertplus.equal(data[0].status, mod_protocol.FP_STATUS_ERROR);
-	mod_assertplus.deepEqual(data[0].data, sample_object);
+	mod_assertplus.deepEqual(data[0].data, sample_error);
     }
 }, {
     'name': 'DATA message with maximum msgid',
@@ -168,7 +170,7 @@ test_cases = [ {
 	buf = new Buffer(nmessages * msgsize);
 	for (i = 0; i < nmessages; i++) {
 		msgoffset = i * msgsize;
-		writeMessageForEncodedData(buf, i + 1,
+		mod_testcommon.writeMessageForEncodedData(buf, i + 1,
 		    mod_protocol.FP_STATUS_DATA, sample_data, msgoffset);
 	}
 
@@ -195,7 +197,7 @@ test_cases = [ {
 	buf = new Buffer(nmessages * msgsize);
 	for (i = 0; i < nmessages; i++) {
 		msgoffset = i * msgsize;
-		writeMessageForEncodedData(buf, i + 1,
+		mod_testcommon.writeMessageForEncodedData(buf, i + 1,
 		    mod_protocol.FP_STATUS_DATA, sample_data, msgoffset);
 		if (i == 1000) {
 			buf.writeUInt8(0x0,
@@ -411,6 +413,47 @@ test_cases = [ {
 	mod_assertplus.equal(error.info().fastReason, 'bad_data');
     }
 }, {
+    'name': 'bad: ERROR message with missing data',
+    'input': function () {
+	return (makeMessageForData(47, mod_protocol.FP_STATUS_ERROR, {}));
+    },
+    'check': function (error, data) {
+	mod_assertplus.equal(data.length, 0);
+	mod_assertplus.ok(error instanceof Error);
+	mod_assertplus.equal(error.name, 'FastProtocolError');
+	mod_assertplus.ok(/data\.d for ERROR messages must have name/.test(
+	    error.message));
+	mod_assertplus.equal(error.info().fastReason, 'bad_error');
+    }
+}, {
+    'name': 'bad: ERROR message with null d',
+    'input': function () {
+	return (makeMessageForData(47, mod_protocol.FP_STATUS_ERROR,
+	    { 'd': null }));
+    },
+    'check': function (error, data) {
+	mod_assertplus.equal(data.length, 0);
+	mod_assertplus.ok(error instanceof Error);
+	mod_assertplus.equal(error.name, 'FastProtocolError');
+	mod_assertplus.ok(/data\.d for ERROR messages must have name/.test(
+	    error.message));
+	mod_assertplus.equal(error.info().fastReason, 'bad_error');
+    }
+}, {
+    'name': 'bad: ERROR message with bad name',
+    'input': function () {
+	return (makeMessageForData(47, mod_protocol.FP_STATUS_ERROR,
+	    { 'd': { 'name': 47, 'message': 'threeve' } }));
+    },
+    'check': function (error, data) {
+	mod_assertplus.equal(data.length, 0);
+	mod_assertplus.ok(error instanceof Error);
+	mod_assertplus.equal(error.name, 'FastProtocolError');
+	mod_assertplus.ok(/data\.d for ERROR messages must have name/.test(
+	    error.message));
+	mod_assertplus.equal(error.info().fastReason, 'bad_error');
+    }
+}, {
     'name': 'bad: end of stream with 1-byte header',
     'input': function () {
 	var buf = new Buffer(1);
@@ -462,8 +505,8 @@ test_cases = [ {
 	dataenc = '{ "hello"';
 	datalen = Buffer.byteLength(dataenc);
 	buf = new Buffer(mod_protocol.FP_HEADER_SZ + datalen);
-	writeMessageForEncodedData(buf, 3, mod_protocol.FP_STATUS_DATA,
-	    dataenc, 0);
+	mod_testcommon.writeMessageForEncodedData(buf, 3,
+	    mod_protocol.FP_STATUS_DATA, dataenc, 0);
 	return (buf);
     },
     'check': function (error, data) {
@@ -479,7 +522,8 @@ test_cases = [ {
     'input': function () {
 	var buf;
 	buf = new Buffer(mod_protocol.FP_HEADER_SZ);
-	writeMessageForEncodedData(buf, 3, mod_protocol.FP_STATUS_DATA, '', 0);
+	mod_testcommon.writeMessageForEncodedData(buf, 3,
+	    mod_protocol.FP_STATUS_DATA, '', 0);
 	return (buf);
     },
     'check': function (error, data) {
@@ -507,25 +551,9 @@ function makeMessageForData(msgid, status, data)
 	dataenc = JSON.stringify(data);
 	datalen = Buffer.byteLength(dataenc);
 	buf = new Buffer(mod_protocol.FP_HEADER_SZ + datalen);
-	writeMessageForEncodedData(buf, msgid, status, dataenc, 0);
+	mod_testcommon.writeMessageForEncodedData(
+	    buf, msgid, status, dataenc, 0);
 	return (buf);
-}
-
-function writeMessageForEncodedData(buf, msgid, status, dataenc, msgoffset)
-{
-	var crc, datalen;
-	crc = mod_crc.crc16(dataenc);
-	datalen = Buffer.byteLength(dataenc);
-
-	buf.writeUInt8(mod_protocol.FP_VERSION_1,
-	    msgoffset + mod_protocol.FP_OFF_VERSION);
-	buf.writeUInt8(mod_protocol.FP_TYPE_JSON,
-	    msgoffset + mod_protocol.FP_OFF_TYPE);
-	buf.writeUInt8(status, msgoffset + mod_protocol.FP_OFF_STATUS);
-	buf.writeUInt32BE(msgid, msgoffset + mod_protocol.FP_OFF_MSGID);
-	buf.writeUInt32BE(crc, msgoffset + mod_protocol.FP_OFF_CRC);
-	buf.writeUInt32BE(datalen, msgoffset + mod_protocol.FP_OFF_DATALEN);
-	buf.write(dataenc, msgoffset + mod_protocol.FP_OFF_DATA);
 }
 
 main();
