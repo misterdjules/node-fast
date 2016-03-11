@@ -18,7 +18,7 @@
  * including normal, valid RPC calls, RPC calls that return lots of data, and
  * various edge cases like invalid messages and unexpected end-of-stream events.
  * There are some test cases that require more control over client-server
- * interaction.  These are defined in tst.client_atlarge.js.
+ * interaction.  These are defined in tst.client_generic.js.
  */
 
 var mod_assertplus = require('assert-plus');
@@ -34,8 +34,8 @@ var mod_testcommon = require('./common');
 
 var testLog;
 var serverSocket;
-var serverPort = 31016;
-var serverIp = '127.0.0.1';
+var serverPort = mod_testcommon.serverPort;
+var serverIp = mod_testcommon.serverIp;
 
 function main()
 {
@@ -46,9 +46,10 @@ function main()
 	    'level': process.env['LOG_LEVEL'] || 'fatal'
 	});
 
-	serverSocket = mod_net.createServer({ 'allowHalfOpen': true });
-	serverSocket.listen(serverPort, serverIp, function () {
+	mod_testcommon.mockServerSetup(function (s) {
 		testLog.info('server listening');
+		serverSocket = s;
+
 		mod_vasync.forEachPipeline({
 		    'inputs': mockResponders,
 		    'func': runTestCase
@@ -58,7 +59,7 @@ function main()
 			}
 
 			done = true;
-			serverSocket.close();
+			mod_testcommon.mockServerTeardown(serverSocket);
 			console.log('%s tests passed',
 			    mod_path.basename(__filename));
 		});
@@ -140,8 +141,8 @@ function runTestCase(testcase, callback)
 	});
 
 	request = client.rpc({
-	    'rpcmethod': 'testmethod',
-	    'rpcargs': dummyRequestArgs
+	    'rpcmethod': mod_testcommon.dummyRpcMethodName,
+	    'rpcargs': mod_testcommon.dummyRpcArgs
 	});
 
 	request.on('error', function (err) {
@@ -178,26 +179,6 @@ function runTestCase(testcase, callback)
 		callback();
 	};
 }
-
-/*
- * These dummy values are used in responses for various test cases.
- */
-var dummyValue = { 'movies': [ 'red dawn', 'wargames' ] };
-var dummyResponseEndEmpty = { 'd': [] };
-var dummyResponseData = { 'd': [ dummyValue ] };
-var dummyRequestArgs = [ dummyValue ];
-var dummyError = new VError({
-    'name': 'DummyError',
-    'info': {
-	'dummyProp': 'dummyVal'
-    }
-}, 'dummy error message');
-dummyError.context = { 'dummyProp': 'dummyVal' };
-var dummyResponseError = { 'd': {
-    'name': dummyError.name,
-    'message': dummyError.message,
-    'info': dummyError.info()
-} };
 
 /*
  * "mockResponders" describes a bunch of client test cases by describing what
@@ -249,7 +230,7 @@ var mockResponders = [ {
 	encoder.end({
 	    'msgid': message.msgid,
 	    'status': mod_protocol.FP_STATUS_END,
-	    'data': dummyResponseEndEmpty
+	    'data': mod_testcommon.dummyResponseEndEmpty
 	});
     },
     'clientCheck': function (data, errors) {
@@ -300,7 +281,7 @@ var mockResponders = [ {
 	encoder.end({
 	    'msgid': message.msgid,
 	    'status': mod_protocol.FP_STATUS_ERROR,
-	    'data': dummyResponseError
+	    'data': mod_testcommon.dummyResponseError
 	});
     },
     'clientCheck': function (data, errors) {
@@ -308,7 +289,7 @@ var mockResponders = [ {
 	mod_assertplus.ok(errors.client === null);
 	mod_assertplus.ok(errors.request !== null);
 	mod_assertplus.equal(data.length, 0);
-	assertServerError(errors.request, dummyError);
+	assertServerError(errors.request, mod_testcommon.dummyError);
     }
 
 }, {
@@ -322,14 +303,14 @@ var mockResponders = [ {
 		encoder.write({
 		    'msgid': message.msgid,
 		    'status': mod_protocol.FP_STATUS_DATA,
-		    'data': dummyResponseData
+		    'data': mod_testcommon.dummyResponseData
 		});
 	}
 
 	encoder.end({
 	    'msgid': message.msgid,
 	    'status': mod_protocol.FP_STATUS_ERROR,
-	    'data': dummyResponseError
+	    'data': mod_testcommon.dummyResponseError
 	});
     },
     'clientCheck': function (data, errors) {
@@ -340,10 +321,10 @@ var mockResponders = [ {
 	mod_assertplus.equal(data.length, 5);
 
 	for (i = 0; i < data.length; i++) {
-		mod_assertplus.deepEqual(data[i], dummyValue);
+		mod_assertplus.deepEqual(data[i], mod_testcommon.dummyValue);
 	}
 
-	assertServerError(errors.request, dummyError);
+	assertServerError(errors.request, mod_testcommon.dummyError);
     }
 
 }, {
@@ -360,7 +341,7 @@ var mockResponders = [ {
 	mod_assertplus.equal(errors.client.name, 'FastProtocolError');
 	mod_assertplus.equal(errors.client.message,
 	    'unexpected end of transport stream');
-	assertRequestError(errors.request, errors.client);
+	mod_testcommon.assertRequestError(errors.request, errors.client);
     }
 
 }, {
@@ -379,7 +360,7 @@ var mockResponders = [ {
 	mod_assertplus.equal(errors.client.name, 'FastProtocolError');
 	mod_assertplus.equal(errors.client.message,
 	    'fast protocol: incomplete message at end-of-stream');
-	assertRequestError(errors.request, errors.client);
+	mod_testcommon.assertRequestError(errors.request, errors.client);
     }
 
 }, {
@@ -388,7 +369,7 @@ var mockResponders = [ {
 	encoder.end({
 	    'msgid': message.msgid,
 	    'status': mod_protocol.FP_STATUS_DATA,
-	    'data': dummyResponseData
+	    'data': mod_testcommon.dummyResponseData
 	});
     },
     'clientCheck': function (data, errors) {
@@ -396,12 +377,12 @@ var mockResponders = [ {
 	mod_assertplus.ok(errors.client !== null);
 	mod_assertplus.ok(errors.request !== null);
 	mod_assertplus.equal(data.length, 1);
-	mod_assertplus.deepEqual(data[0], dummyValue);
+	mod_assertplus.deepEqual(data[0], mod_testcommon.dummyValue);
 
 	mod_assertplus.equal(errors.client.name, 'FastProtocolError');
 	mod_assertplus.equal(errors.client.message,
 	    'unexpected end of transport stream');
-	assertRequestError(errors.request, errors.client);
+	mod_testcommon.assertRequestError(errors.request, errors.client);
     }
 
 }, {
@@ -411,7 +392,7 @@ var mockResponders = [ {
 	encoder.end({
 	    'msgid': 47,
 	    'status': mod_protocol.FP_STATUS_END,
-	    'data': dummyResponseData
+	    'data': mod_testcommon.dummyResponseData
 	});
     },
     'clientCheck': function (data, errors) {
@@ -423,7 +404,7 @@ var mockResponders = [ {
 	mod_assertplus.equal(errors.client.name, 'FastProtocolError');
 	mod_assertplus.equal(errors.client.message,
 	    'fast protocol: received message with unknown msgid 47');
-	assertRequestError(errors.request, errors.client);
+	mod_testcommon.assertRequestError(errors.request, errors.client);
     }
 
 }, {
@@ -448,7 +429,7 @@ var mockResponders = [ {
 	mod_assertplus.equal(errors.client.name, 'FastProtocolError');
 	mod_assertplus.ok(/fast protocol: invalid JSON/.test(
 	    errors.client.message));
-	assertRequestError(errors.request, errors.client);
+	mod_testcommon.assertRequestError(errors.request, errors.client);
     }
 
 }, {
@@ -469,7 +450,7 @@ var mockResponders = [ {
 	mod_assertplus.equal(errors.client.name, 'FastProtocolError');
 	mod_assertplus.ok(/data.d for ERROR messages must have name/.test(
 	    errors.client.message));
-	assertRequestError(errors.request, errors.client);
+	mod_testcommon.assertRequestError(errors.request, errors.client);
     }
 
 }, {
@@ -577,20 +558,9 @@ function assertServerError(found_error, server_error)
 
 	info = found_error.info();
 	mod_assertplus.number(info['rpcMsgid'], 1);
-	mod_assertplus.equal(info['rpcMethod'], 'testmethod');
+	mod_assertplus.equal(info['rpcMethod'],
+	    mod_testcommon.dummyRpcMethodName);
 	mod_assertplus.equal(info['dummyProp'], 'dummyVal');
-}
-
-/*
- * Asserts that the given found_error is a FastRequestError caused by
- * expected_cause.
- */
-function assertRequestError(found_error, expected_cause)
-{
-	mod_assertplus.equal(found_error.name, 'FastRequestError');
-	mod_assertplus.equal(found_error.message,
-	    'request failed: ' + expected_cause.message);
-	mod_assertplus.equal(found_error.cause().name, expected_cause.name);
 }
 
 main();
