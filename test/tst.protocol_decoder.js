@@ -9,7 +9,7 @@
  */
 
 /*
- * test/protocol/tst.decoder.js: fast protocol decoder tests
+ * test/tst.protocol_decoder.js: fast protocol decoder tests
  */
 
 var mod_assertplus = require('assert-plus');
@@ -19,10 +19,10 @@ var mod_extsprintf = require('extsprintf');
 var mod_path = require('path');
 var mod_vasync = require('vasync');
 
-var mod_protocol = require('../../lib/fast_protocol');
+var mod_protocol = require('../lib/fast_protocol');
 var printf = mod_extsprintf.printf;
 
-var mod_testcommon = require('../common');
+var mod_testcommon = require('./common');
 
 var test_cases;
 
