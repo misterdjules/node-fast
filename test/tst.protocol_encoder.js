@@ -9,7 +9,7 @@
  */
 
 /*
- * test/protocol/tst.encoder.js: fast protocol encoder tests
+ * test/tst.protocol_encoder.js: fast protocol encoder tests
  */
 
 var mod_assertplus = require('assert-plus');
@@ -17,10 +17,10 @@ var mod_cmdutil = require('cmdutil');
 var mod_extsprintf = require('extsprintf');
 var mod_path = require('path');
 
-var mod_protocol = require('../../lib/fast_protocol');
+var mod_protocol = require('../lib/fast_protocol');
 var printf = mod_extsprintf.printf;
 
-var mod_testcommon = require('../common');
+var mod_testcommon = require('./common');
 
 var bigdata, bigdataval, test_cases;
 var circular = {};
