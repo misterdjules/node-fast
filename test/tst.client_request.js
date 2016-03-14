@@ -30,6 +30,7 @@ var VError = require('verror');
 
 var mod_client = require('../lib/fast_client');
 var mod_protocol = require('../lib/fast_protocol');
+var mod_testclient = require('./common/client');
 var mod_testcommon = require('./common');
 
 var testLog;
@@ -39,13 +40,12 @@ var serverIp = mod_testcommon.serverIp;
 
 function main()
 {
-	var done = false;
-
 	testLog = new mod_bunyan({
 	    'name': mod_path.basename(__filename),
 	    'level': process.env['LOG_LEVEL'] || 'fatal'
 	});
 
+	mod_testcommon.registerExitBlocker('test run');
 	mod_testcommon.mockServerSetup(function (s) {
 		testLog.info('server listening');
 		serverSocket = s;
@@ -58,126 +58,41 @@ function main()
 				throw (err);
 			}
 
-			done = true;
+			mod_testcommon.unregisterExitBlocker('test run');
 			mod_testcommon.mockServerTeardown(serverSocket);
 			console.log('%s tests passed',
 			    mod_path.basename(__filename));
 		});
 	});
-
-	process.on('exit', function (code) {
-		if (code === 0) {
-			mod_assertplus.ok(done, 'premature exit');
-		}
-	});
 }
 
 function runTestCase(testcase, callback)
 {
-	var client, csock, request;
-	var data, errors, isdone, done;
-	var log;
-
-	log = testLog.child({ 'testcase': testcase['name'] });
-	isdone = false;
-	data = [];
-	errors = {
-	    'socket': null,
-	    'client': null,
-	    'request': null
-	};
+	var ctc, ctr;
 
 	console.log('test case: %s', testcase.name);
+	ctc = new mod_testclient.ClientTestContext({
+	    'server': serverSocket,
+	    'log': testLog.child({ 'testcase': testcase['name'] })
+	});
 
-	/*
-	 * Before initiating the client connection, set up a handler on the
-	 * server socket to handle this connection by invoking this test case's
-	 * serverReply function.
-	 */
-	serverSocket.once('connection', function (sock) {
-		var encoder, decoder;
+	ctc.establishConnection();
+	ctc.ctc_server_decoder.once('data', function (message) {
+		ctc.ctc_server_message = message;
+		testcase['serverReply'](ctc.ctc_server_sock, message,
+		    ctc.ctc_server_encoder, ctc.ctc_server_decoder);
+	});
 
-		testLog.debug('server received connection');
-
-		mod_assertplus.ok(!isdone);
-		encoder = new mod_protocol.MessageEncoder();
-		encoder.pipe(sock);
-
-		decoder = new mod_protocol.MessageDecoder();
-		sock.pipe(decoder);
-		decoder.on('data', function (message) {
-			testcase['serverReply'](sock, message, encoder,
-			    decoder);
+	ctr = ctc.makeRequest(function () {
+		testcase['clientCheck'](ctr.ctr_data, {
+		    'socket': ctc.ctc_error_sock,
+		    'client': ctc.ctc_error_client,
+		    'request': ctr.ctr_error
 		});
-	});
 
-	/*
-	 * Set up the client socket, FastClient object, and make an RPC request.
-	 * We'll invoke the done() closure (defined below) when the RPC
-	 * completes with either an "error" or "end" event.
-	 */
-	csock = mod_net.createConnection({
-	    'port': serverPort,
-	    'host': serverIp,
-	    'allowHalfOpen': true
-	});
-
-	csock.on('error', function (err) {
-		log.debug(err, 'client socket error');
-		mod_assertplus.ok(!isdone);
-		errors.socket = err;
-	});
-
-	client = new mod_client.FastClient({
-	    'log': log.child({ 'component': 'FastClient' }),
-	    'nRecentRequests': 10,
-	    'transport': csock
-	});
-
-	client.on('error', function (err) {
-		log.debug(err, 'client error');
-		mod_assertplus.ok(!isdone);
-		errors.client = err;
-	});
-
-	request = client.rpc({
-	    'rpcmethod': mod_testcommon.dummyRpcMethodName,
-	    'rpcargs': mod_testcommon.dummyRpcArgs
-	});
-
-	request.on('error', function (err) {
-		log.debug(err, 'client request error');
-		mod_assertplus.ok(!isdone);
-		errors.request = err;
-
-		/*
-		 * Schedule done() for the next tick to allow any socket or
-		 * client errors to be emitted.  This isn't necessarily enough
-		 * to ensure that we've waited long enough, but it should work
-		 * in practice.
-		 */
-		setImmediate(done);
-	});
-
-	request.on('data', function (d) {
-		log.debug(d, 'client request data');
-		mod_assertplus.ok(!isdone);
-		data.push(d);
-	});
-
-	request.on('end', function () {
-		log.debug('client request ended');
-		mod_assertplus.ok(!isdone);
-		done();
-	});
-
-	done = function () {
-		mod_assertplus.ok(!isdone);
-		isdone = true;
-		testcase['clientCheck'](data, errors);
-		csock.end();
+		ctc.cleanup();
 		callback();
-	};
+	});
 }
 
 /*

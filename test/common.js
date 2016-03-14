@@ -49,6 +49,8 @@ exports.mockServerSetup = mockServerSetup;
 exports.mockServerTeardown = mockServerTeardown;
 exports.assertRequestError = assertRequestError;
 exports.FlowControlSource = FlowControlSource;
+exports.registerExitBlocker = registerExitBlocker;
+exports.unregisterExitBlocker = unregisterExitBlocker;
 
 /*
  * Construct a plain-old-JavaScript object whose size is linear in "width" and
@@ -235,3 +237,43 @@ FlowControlSource.prototype.onTimeout = function ()
 	this.fcs_log.debug(state, 'coming to rest');
 	this.emit('resting', state);
 };
+
+
+/*
+ * Register that the current program should not exit until this registration is
+ * removed.  It's sometimes easy to create Node programs that exit prematurely
+ * with status 0 because they had no more work to do.  This mechanism causes the
+ * program to crash when that happens.  You first register an "exit blocker"
+ * with a descriptive name (so that you know which part of the program thinks it
+ * should not be exiting).  On normal process exit (i.e. with status code 0), if
+ * the exit blocker has not been removed, then the program crashes.  Exits for
+ * non-zero status codes (including aborts due to --abort-on-uncaught-exception
+ * or other fatal errors) are not affected by this.
+ *
+ * This would be a useful first-class interface, maybe in node-vasync.
+ */
+var exitBlockers = {};
+function registerExitBlocker(name)
+{
+	var onExitHandler;
+
+	mod_assertplus.ok(!exitBlockers.hasOwnProperty(name),
+	    'exit blocker "' + name + '" is already registered');
+	onExitHandler = function (code) {
+		if (code === 0) {
+			throw (new VError('premature exit: blocker "%s" is ' +
+			    'still regisered', name));
+		}
+	};
+
+	exitBlockers[name] = onExitHandler;
+	process.on('exit', onExitHandler);
+}
+
+function unregisterExitBlocker(name)
+{
+	mod_assertplus.ok(exitBlockers.hasOwnProperty(name),
+	    'exit blocker "' + name + '" is not registered');
+	process.removeListener('exit', exitBlockers[name]);
+	delete (exitBlockers[name]);
+}
