@@ -28,8 +28,7 @@ var test_cases;
 
 function main()
 {
-	var done = false;
-
+	mod_testcommon.registerExitBlocker('test run');
 	mod_vasync.forEachPipeline({
 	    'inputs': test_cases,
 	    'func': runTestCase
@@ -38,14 +37,8 @@ function main()
 			throw (err);
 		}
 
-		done = true;
+		mod_testcommon.unregisterExitBlocker('test run');
 		printf('%s tests passed\n', mod_path.basename(__filename));
-	});
-
-	process.on('exit', function (code) {
-		if (code === 0) {
-			mod_assertplus.ok(done, 'premature exit');
-		}
 	});
 }
 

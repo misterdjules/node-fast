@@ -16,9 +16,6 @@
  * into the much simpler model in tst.client_request.js, and we should generally
  * put test cases in there when possible.  The test cases that need to go here
  * include those where the end of the test is harder to identify.
- *
- * XXX figure out how to better commonize this with tst.client_request.js,
- * particularly around main(), which is almost the same.
  */
 
 var mod_assertplus = require('assert-plus');
@@ -38,13 +35,12 @@ var testLog;
 
 function main()
 {
-	var done = false;
-
 	testLog = new mod_bunyan({
 	    'name': mod_path.basename(__filename),
 	    'level': process.env['LOG_LEVEL'] || 'fatal'
 	});
 
+	mod_testcommon.registerExitBlocker('test run');
 	mod_testcommon.mockServerSetup(function (s) {
 		testLog.info('server listening');
 		serverSocket = s;
@@ -57,17 +53,11 @@ function main()
 				throw (err);
 			}
 
-			done = true;
 			mod_testcommon.mockServerTeardown(serverSocket);
+			mod_testcommon.unregisterExitBlocker('test run');
 			console.log('%s tests passed',
 			    mod_path.basename(__filename));
 		});
-	});
-
-	process.on('exit', function (code) {
-		if (code === 0) {
-			mod_assertplus.ok(done, 'premature exit');
-		}
 	});
 }
 
