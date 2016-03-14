@@ -17,7 +17,6 @@
  * put test cases in there when possible.  The test cases that need to go here
  * include those where the end of the test is harder to identify.
  *
- * XXX add test for flow control
  * XXX figure out how to better commonize this with tst.client_request.js,
  * particularly around main(), which is almost the same.
  */
@@ -27,6 +26,7 @@ var mod_bunyan = require('bunyan');
 var mod_net = require('net');
 var mod_path = require('path');
 var mod_vasync = require('vasync');
+var VError = require('verror');
 
 var mod_client = require('../lib/fast_client');
 var mod_protocol = require('../lib/fast_protocol');
@@ -596,6 +596,101 @@ var test_cases = [ {
 	});
     }
 
+}, {
+    'name': 'flow control from server to client',
+    'run': function (ctc, callback) {
+	var req, source;
+
+	mod_vasync.waterfall([
+	    function makeRequest(next) {
+		/*
+		 * We cannot use ctc.makeRequest() because that will immediately
+		 * start reading 'data' events.  We want to avoid doing that to
+		 * make sure that we get flow-controlled.  In order to do that,
+		 * we need to make the request ourselves and pause the request
+		 * stream.
+		 *
+		 * We deliberately add no "error" handler yet since we do not
+		 * expect an error and the test should crash if we see one.
+		 */
+		ctc.ctc_log.debug('issuing flow-controlled RPC');
+		req = ctc.ctc_fastclient.rpc({
+		    'rpcmethod': mod_testcommon.dummyRpcMethodName,
+		    'rpcargs': mod_testcommon.dummyRpcArgs
+		});
+
+		ctc.ctc_client_sock.pause();
+
+		/*
+		 * Set up a server handler that writes data until it's blocked.
+		 */
+		ctc.ctc_server_decoder.once('data', function (message) {
+			var outmessage = {
+			    'msgid': message.msgid,
+			    'status': mod_protocol.FP_STATUS_DATA,
+			    'data': mod_testcommon.dummyResponseData
+			};
+
+			source = new mod_testcommon.FlowControlSource({
+			    'datum': outmessage,
+			    'restMs': 1000,
+			    'log': ctc.ctc_log.child({
+			        'component': 'FlowControlSource'
+			    })
+			});
+
+			source.pipe(ctc.ctc_server_encoder);
+			source.once('resting', function () { next(); });
+		});
+	    },
+
+	    function checkFlowControlled(next) {
+		/*
+		 * These checks are brittle because they depend on internal Node
+		 * implementation details.  However, if those details change,
+		 * the failure here is likely to be explicit, and we can decide
+		 * how best to fix them.  We could skip these checks entirely,
+		 * but we'd like to be sure that the flow-control mechanism was
+		 * definitely engaged and that it was engaged because the client
+		 * is backed up.  If this check fails, and the Node internals on
+		 * which it relies have not changed, that means that we
+		 * inadvertently decided the server was flow-controlled above
+		 * even though the client's buffer is not full.
+		 */
+		ctc.ctc_log.debug('came to rest; verifying and moving on');
+		mod_assertplus.equal('number',
+		    typeof (ctc.ctc_client_sock._readableState.length));
+		mod_assertplus.equal('number',
+		    typeof (ctc.ctc_client_sock._readableState.highWaterMark));
+		mod_assertplus.ok(ctc.ctc_client_sock._readableState.length >=
+		    ctc.ctc_client_sock._readableState.highWaterMark);
+
+		/*
+		 * Stop the source and release the flow control.  Add an "error"
+		 * handler to the request, because the FlowControlSource above
+		 * will not actually generate a proper END message, so we expect
+		 * an error to be generated when the end-of-stream is reached.
+		 */
+		req.on('error', function (err) {
+			var cause = err.cause();
+			mod_assertplus.equal(cause.name, 'FastProtocolError');
+			mod_assertplus.equal(cause.message,
+			    'unexpected end of transport stream');
+			next();
+		});
+		req.on('end', function () {
+			/* See above. */
+			throw (new VError('unexpected request completion'));
+		});
+
+		source.stop();
+		ctc.ctc_client_sock.resume();
+	    }
+	], function (err) {
+		ctc.cleanup();
+		callback();
+	});
+    }
 
 }, {
     'name': '10,000 requests, with max concurrency 100',

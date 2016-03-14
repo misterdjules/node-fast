@@ -16,6 +16,8 @@ var mod_assertplus = require('assert-plus');
 var mod_crc = require('crc');
 var mod_net = require('net');
 var mod_protocol = require('../lib/fast_protocol');
+var mod_stream = require('stream');
+var mod_util = require('util');
 var VError = require('verror');
 
 /* IP used for the server in this test suite */
@@ -46,6 +48,7 @@ exports.writeMessageForEncodedData = writeMessageForEncodedData;
 exports.mockServerSetup = mockServerSetup;
 exports.mockServerTeardown = mockServerTeardown;
 exports.assertRequestError = assertRequestError;
+exports.FlowControlSource = FlowControlSource;
 
 /*
  * Construct a plain-old-JavaScript object whose size is linear in "width" and
@@ -132,3 +135,103 @@ function assertRequestError(found_error, expected_cause)
 	    'request failed: ' + expected_cause.message);
 	mod_assertplus.equal(found_error.cause().name, expected_cause.name);
 }
+
+
+/*
+ * A FlowControlSource is an object-mode Readable stream that emits data until
+ * the caller calls stop().  This class emits event 'resting' when it has been
+ * flow controlled for the specified time.
+ *
+ *     datum		chunk of data to emit when asked for data
+ *
+ *     log		bunyan-style logger
+ *
+ *     restMs		time to wait while flow-controlled before emitting
+ *     			'resting'
+ */
+function FlowControlSource(args)
+{
+	mod_assertplus.object(args, 'args');
+	mod_assertplus.object(args.datum, 'args.datum');
+	mod_assertplus.object(args.log, 'args.log');
+	mod_assertplus.number(args.restMs, 'args.restMs');
+
+	this.fcs_datum = args.datum;
+	this.fcs_log = args.log;
+	this.fcs_rest_time = args.restMs;
+	this.fcs_reading = false;
+	this.fcs_stopped = false;
+	this.fcs_flowcontrolled = null;
+	this.fcs_timeout = null;
+	this.fcs_ntransients = 0;
+	this.fcs_nresting = 0;
+	this.fcs_nwritten = 0;
+
+	mod_stream.Readable.call(this, {
+	    'objectMode': true,
+	    'highWaterMark': 16
+	});
+}
+
+mod_util.inherits(FlowControlSource, mod_stream.Readable);
+
+FlowControlSource.prototype._read = function ()
+{
+	var i;
+
+	if (this.fcs_reading) {
+		this.fcs_log.debug('ignoring _read(): already reading');
+		return;
+	}
+
+	if (this.fcs_stopped) {
+		this.fcs_log.debug('_read() pushing end-of-stream');
+		this.push(null);
+		return;
+	}
+
+	this.fcs_reading = true;
+	if (this.fcs_timeout !== null) {
+		this.fcs_ntransients++;
+		clearTimeout(this.fcs_timeout);
+		this.fcs_timeout = null;
+	}
+
+	this.fcs_log.trace('reading');
+	for (i = 1; ; i++) {
+		this.fcs_nwritten++;
+		if (!this.push(this.fcs_datum)) {
+			break;
+		}
+	}
+
+	this.fcs_log.trace({
+	    'nwritten': this.fcs_nwritten,
+	    'ntransients': this.fcs_ntransients,
+	    'nresting': this.fcs_nresting
+	}, 'flow-controlled after %d objects', i);
+	this.fcs_flowcontrolled = new Date();
+	this.fcs_timeout = setTimeout(this.onTimeout.bind(this),
+	    this.fcs_rest_time);
+	this.fcs_reading = false;
+};
+
+FlowControlSource.prototype.stop = function ()
+{
+	this.fcs_stopped = true;
+	this._read();
+};
+
+FlowControlSource.prototype.onTimeout = function ()
+{
+	var state = {
+	    'nwritten': this.fcs_nwritten,
+	    'ntransients': this.fcs_ntransients,
+	    'nresting': this.fcs_nresting
+	};
+
+	this.fcs_nresting++;
+	this.fcs_timeout = null;
+	this.fcs_log.debug(state, 'coming to rest');
+	this.emit('resting', state);
+};
