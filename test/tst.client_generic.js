@@ -139,8 +139,9 @@ function runDuplicateResponseTest(ctc, firstIsError, secondStatus, callback)
 
 		mod_assertplus.ok(error !== null);
 		mod_assertplus.equal(error.name, 'FastProtocolError');
-		mod_assertplus.equal(error.info().fastReason, 'unknown_msgid');
-		mod_assertplus.equal(error.info().fastMsgid,
+		mod_assertplus.equal(VError.info(error).fastReason,
+		    'unknown_msgid');
+		mod_assertplus.equal(VError.info(error).fastMsgid,
 		    ctc.ctc_server_message.msgid);
 		mod_assertplus.equal(error.message,
 		    'fast protocol: received message with unknown msgid ' +
@@ -216,7 +217,7 @@ function runClientFailureTest(ctc, doFail, callback)
 			mod_assertplus.equal(erq.ctr_error.message,
 			    'request failed: ' + cause.message);
 			mod_assertplus.equal(erq.ctr_request.requestId(),
-			    erq.ctr_error.info().rpcMsgid);
+			    VError.info(erq.ctr_error).rpcMsgid);
 			/* The caller will check the cause details later. */
 		});
 
@@ -232,7 +233,7 @@ function runClientFailureTest(ctc, doFail, callback)
 			mod_assertplus.equal(lrq.ctr_error.message,
 			    'request failed: ' + cause.message);
 			mod_assertplus.equal(lrq.ctr_request.requestId(),
-			    lrq.ctr_error.info().rpcMsgid);
+			    VError.info(lrq.ctr_error).rpcMsgid);
 			mod_assertplus.equal(cause.name, 'FastTransportError');
 			mod_assertplus.equal(cause.message,
 			    'transport detached');
@@ -342,8 +343,9 @@ var test_cases = [ {
 		mod_assertplus.ok(error !== null);
 		mod_assertplus.ok(err == error);
 		mod_assertplus.equal(error.name, 'FastProtocolError');
-		mod_assertplus.equal(error.info().fastReason, 'unknown_msgid');
-		mod_assertplus.equal(error.info().fastMsgid, 0x7);
+		mod_assertplus.equal(VError.info(error).fastReason,
+		    'unknown_msgid');
+		mod_assertplus.equal(VError.info(error).fastMsgid, 0x7);
 		mod_assertplus.equal(error.message,
 		    'fast protocol: received message with unknown msgid 7');
 		ctc.cleanup();

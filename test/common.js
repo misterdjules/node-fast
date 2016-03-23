@@ -40,7 +40,7 @@ exports.dummyError = new VError({
 exports.dummyResponseError = { 'd': {
     'name': exports.dummyError.name,
     'message': exports.dummyError.message,
-    'info': exports.dummyError.info()
+    'info': VError.info(exports.dummyError)
 } };
 
 exports.makeBigObject = makeBigObject;

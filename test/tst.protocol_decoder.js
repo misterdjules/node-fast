@@ -18,6 +18,7 @@ var mod_crc = require('crc');
 var mod_extsprintf = require('extsprintf');
 var mod_path = require('path');
 var mod_vasync = require('vasync');
+var VError = require('verror');
 
 var mod_protocol = require('../lib/fast_protocol');
 var printf = mod_extsprintf.printf;
@@ -206,8 +207,9 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported version 0/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_version');
-	mod_assertplus.equal(error.info().foundVersion, 0);
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'unsupported_version');
+	mod_assertplus.equal(VError.info(error).foundVersion, 0);
 
 	mod_assertplus.equal(data.length, 1000);
 	for (i = 0; i < data.length; i++) {
@@ -229,8 +231,9 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported version 0/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_version');
-	mod_assertplus.equal(error.info().foundVersion, 0);
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'unsupported_version');
+	mod_assertplus.equal(VError.info(error).foundVersion, 0);
     }
 }, {
     'name': 'bad version (37)',
@@ -244,8 +247,9 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported version 37/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_version');
-	mod_assertplus.equal(error.info().foundVersion, 37);
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'unsupported_version');
+	mod_assertplus.equal(VError.info(error).foundVersion, 37);
     }
 }, {
     'name': 'bad type (0)',
@@ -259,8 +263,8 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported type 0x0/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_type');
-	mod_assertplus.equal(error.info().foundType, 0);
+	mod_assertplus.equal(VError.info(error).fastReason, 'unsupported_type');
+	mod_assertplus.equal(VError.info(error).foundType, 0);
     }
 }, {
     'name': 'bad type (2)',
@@ -274,8 +278,8 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported type 0x2/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_type');
-	mod_assertplus.equal(error.info().foundType, 2);
+	mod_assertplus.equal(VError.info(error).fastReason, 'unsupported_type');
+	mod_assertplus.equal(VError.info(error).foundType, 2);
     }
 }, {
     'name': 'bad status (0)',
@@ -289,8 +293,9 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported status 0x0/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_status');
-	mod_assertplus.equal(error.info().foundStatus, 0);
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'unsupported_status');
+	mod_assertplus.equal(VError.info(error).foundStatus, 0);
     }
 }, {
     'name': 'bad status (4)',
@@ -304,8 +309,9 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/unsupported status 0x4/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'unsupported_status');
-	mod_assertplus.equal(error.info().foundStatus, 4);
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'unsupported_status');
+	mod_assertplus.equal(VError.info(error).foundStatus, 4);
     }
 }, {
     'name': 'bad msgid (too large)',
@@ -320,8 +326,8 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/invalid msgid 2147483648/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'invalid_msgid');
-	mod_assertplus.equal(error.info().foundMsgid, 2147483648);
+	mod_assertplus.equal(VError.info(error).fastReason, 'invalid_msgid');
+	mod_assertplus.equal(VError.info(error).foundMsgid, 2147483648);
     }
 }, {
     'name': 'bad CRC',
@@ -337,9 +343,9 @@ test_cases = [ {
 	mod_assertplus.ok(error instanceof Error);
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/expected CRC 3735928559, found/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_crc');
-	mod_assertplus.equal(error.info().crcCalculated, sample_crc);
-	mod_assertplus.equal(error.info().crcExpected, 0xdeadbeef);
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_crc');
+	mod_assertplus.equal(VError.info(error).crcCalculated, sample_crc);
+	mod_assertplus.equal(VError.info(error).crcExpected, 0xdeadbeef);
     }
 }, {
     'name': 'bad: DATA message with non-array data.d',
@@ -355,7 +361,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/data.d for DATA.*must be an array/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_data_d');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_data_d');
     }
 }, {
     'name': 'bad: END message with non-array data.d',
@@ -371,7 +377,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/data.d for .*END messages must be an array/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_data_d');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_data_d');
     }
 }, {
     'name': 'bad: DATA message with null data',
@@ -387,7 +393,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/message data must be a non-null object/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_data');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_data');
     }
 }, {
     'name': 'bad: DATA message with string data',
@@ -403,7 +409,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/message data must be a non-null object/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_data');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_data');
     }
 }, {
     'name': 'bad: ERROR message with missing data',
@@ -416,7 +422,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/data\.d for ERROR messages must have name/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_error');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_error');
     }
 }, {
     'name': 'bad: ERROR message with null d',
@@ -430,7 +436,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/data\.d for ERROR messages must have name/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_error');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_error');
     }
 }, {
     'name': 'bad: ERROR message with bad name',
@@ -444,7 +450,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/data\.d for ERROR messages must have name/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'bad_error');
+	mod_assertplus.equal(VError.info(error).fastReason, 'bad_error');
     }
 }, {
     'name': 'bad: end of stream with 1-byte header',
@@ -459,7 +465,8 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/incomplete message at end-of-stream/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'incomplete_message');
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'incomplete_message');
     }
 }, {
     'name': 'bad: end of stream with full header and no data',
@@ -474,7 +481,8 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/incomplete message at end-of-stream/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'incomplete_message');
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'incomplete_message');
     }
 }, {
     'name': 'bad: end of stream with full header and partial data',
@@ -489,7 +497,8 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	mod_assertplus.ok(/incomplete message at end-of-stream/.test(
 	    error.message));
-	mod_assertplus.equal(error.info().fastReason, 'incomplete_message');
+	mod_assertplus.equal(VError.info(error).fastReason,
+	    'incomplete_message');
     }
 }, {
     'name': 'bad: invalid JSON data payload',
@@ -508,7 +517,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	/* JSSTYLED */
 	mod_assertplus.ok(/invalid JSON in "data"/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'invalid_json');
+	mod_assertplus.equal(VError.info(error).fastReason, 'invalid_json');
     }
 }, {
     'name': 'bad: 0-byte payload',
@@ -525,7 +534,7 @@ test_cases = [ {
 	mod_assertplus.equal(error.name, 'FastProtocolError');
 	/* JSSTYLED */
 	mod_assertplus.ok(/invalid JSON in "data"/.test(error.message));
-	mod_assertplus.equal(error.info().fastReason, 'invalid_json');
+	mod_assertplus.equal(VError.info(error).fastReason, 'invalid_json');
     }
 } ];
 
