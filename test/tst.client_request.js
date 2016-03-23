@@ -471,7 +471,7 @@ function assertServerError(found_error, server_error)
 	mod_assertplus.equal(cause.name, server_error.name);
 	mod_assertplus.equal(cause.message, server_error.message);
 
-	info = found_error.info();
+	info = VError.info(found_error);
 	mod_assertplus.number(info['rpcMsgid'], 1);
 	mod_assertplus.equal(info['rpcMethod'],
 	    mod_testcommon.dummyRpcMethodName);
