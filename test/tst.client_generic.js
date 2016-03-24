@@ -20,6 +20,7 @@
 
 var mod_assertplus = require('assert-plus');
 var mod_bunyan = require('bunyan');
+var mod_jsprim = require('jsprim');
 var mod_net = require('net');
 var mod_path = require('path');
 var mod_vasync = require('vasync');
@@ -585,6 +586,43 @@ var test_cases = [ {
 
 	ctr.ctr_request.once('data', function () {
 		ctr.ctr_request.abort();
+	});
+    }
+}, {
+    'name': 'request with timeout',
+    'run': function (ctc, callback) {
+	var start, req;
+
+	start = process.hrtime();
+	req = ctc.ctc_fastclient.rpc({
+	    'rpcmethod': mod_testcommon.dummyRpcMethodName,
+	    'rpcargs': mod_testcommon.dummyRpcArgs,
+	    'timeout': 400
+	});
+
+	req.on('end', function () {
+		throw (new Error('unexpected request completion'));
+	});
+
+	req.on('data', function () {
+		throw (new Error('unexpected request data'));
+	});
+
+	req.on('error', function (err) {
+		var cause, delta;
+
+		cause = VError.cause(err);
+		mod_assertplus.equal(err.name, 'FastRequestError');
+		mod_assertplus.equal(err.message, 'request failed: ' +
+		    cause.message);
+
+		mod_assertplus.equal(cause.name, 'TimeoutError');
+		mod_assertplus.equal(VError.info(cause).timeout, 400);
+		delta = mod_jsprim.hrtimeMillisec(process.hrtime(start));
+		mod_assertplus.ok(delta >= 400, 'timeout was too short');
+		mod_assertplus.ok(delta < 4000, 'timeout was too long');
+		ctc.cleanup();
+		callback();
 	});
     }
 
