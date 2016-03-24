@@ -25,6 +25,7 @@ var mod_net = require('net');
 function main()
 {
 	var argv, doabort, host, port, rpcmethod, rpcargs;
+	var timeout = 5000;
 
 	mod_cmdutil.configure({
 	    'synopses': [ '[--abort-immediately] HOST PORT METHOD ARGS' ],
@@ -71,6 +72,7 @@ function main()
 	    'port': port,
 	    'rpcmethod': rpcmethod,
 	    'rpcargs': rpcargs,
+	    'timeout': timeout,
 	    'abortImmediately': doabort
 	}, function (err, result) {
 		if (err) {
@@ -82,17 +84,19 @@ function main()
 function fastcall(args, callback)
 {
 	var log, conn;
-	var rpcmethod, rpcargs, doabort;
+	var rpcmethod, rpcargs, timeout, doabort;
 
 	mod_assertplus.object(args, 'args');
 	mod_assertplus.string(args.host, 'args.host');
 	mod_assertplus.number(args.port, 'args.port');
+	mod_assertplus.number(args.timeout, 'args.timeout');
 	mod_assertplus.string(args.rpcmethod, 'args.rpcmethod');
 	mod_assertplus.array(args.rpcargs, 'args.rpcargs');
 	mod_assertplus.bool(args.abortImmediately, 'args.abortImmediately');
 
 	rpcmethod = args.rpcmethod;
 	rpcargs = args.rpcargs;
+	timeout = args.timeout;
 	doabort = args.abortImmediately;
 
 	log = new mod_bunyan({
@@ -119,7 +123,8 @@ function fastcall(args, callback)
 
 		req = fastconn.rpc({
 		    'rpcmethod': rpcmethod,
-		    'rpcargs': rpcargs
+		    'rpcargs': rpcargs,
+		    'timeout': timeout
 		});
 
 		if (doabort) {
