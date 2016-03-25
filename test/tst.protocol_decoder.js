@@ -45,7 +45,7 @@ function main()
 
 function runTestCase(testcase, callback)
 {
-	var decoder = new mod_protocol.MessageDecoder();
+	var decoder = new mod_protocol.FastMessageDecoder();
 	var data = [];
 	var error = null;
 

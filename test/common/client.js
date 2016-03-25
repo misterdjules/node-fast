@@ -85,8 +85,8 @@ ClientTestContext.prototype.establishConnection = function ()
 		sock.pipe(self.ctc_server_decoder);
 	});
 
-	this.ctc_server_encoder = new mod_protocol.MessageEncoder();
-	this.ctc_server_decoder = new mod_protocol.MessageDecoder();
+	this.ctc_server_encoder = new mod_protocol.FastMessageEncoder();
+	this.ctc_server_decoder = new mod_protocol.FastMessageDecoder();
 };
 
 /*
