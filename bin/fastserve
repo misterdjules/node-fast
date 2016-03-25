@@ -14,24 +14,12 @@
  * fastserve: command-line fast server for demo and testing
  */
 
-var VError = require('verror');
-
 var mod_assertplus = require('assert-plus');
 var mod_bunyan = require('bunyan');
 var mod_cmdutil = require('cmdutil');
+var mod_fastdemo = require('../lib/demo_server');
 var mod_fastserver = require('../lib/fast_server');
-var mod_fs = require('fs');
-var mod_lstream = require('lstream');
 var mod_net = require('net');
-var mod_stream = require('stream');
-
-var demoRpc = [
-    { 'rpcmethod': 'date',	'rpchandler': fastRpcDate  },
-    { 'rpcmethod': 'echo',	'rpchandler': fastRpcEcho  },
-    { 'rpcmethod': 'sleep',	'rpchandler': fastRpcSleep },
-    { 'rpcmethod': 'words',	'rpchandler': fastRpcWords },
-    { 'rpcmethod': 'yes',	'rpchandler': fastRpcYes   }
-];
 
 var usageMessage = [
     'Start a Fast protocol server supporting a few basic RPC calls.  PORT is ',
@@ -80,10 +68,7 @@ function fastDemoServer(args)
 	    'server': sock
 	});
 
-	demoRpc.forEach(function (r) {
-		log.info({
-		    'rpcmethod': r.rpcmethod
-		}, 'registering RPC method');
+	mod_fastdemo.demoRpcs().forEach(function (r) {
 		fastserver.registerRpcMethod(r);
 	});
 
@@ -100,105 +85,6 @@ function fastDemoServer(args)
 			}
 		});
 	});
-}
-
-function fastRpcDate(rpc)
-{
-	var when;
-
-	if (rpc.argv().length !== 0) {
-		rpc.fail(new Error('expected no arguments'));
-	} else {
-		when = new Date();
-		rpc.end({
-		    'timestamp': when.getTime(),
-		    'iso8601': when.toISOString()
-		});
-	}
-}
-
-function fastRpcEcho(rpc)
-{
-	rpc.argv().forEach(function (a) { rpc.write({ 'value': a }); });
-	rpc.end();
-}
-
-function fastRpcSleep(rpc)
-{
-	var argv, timems, maxtimems;
-
-	argv = rpc.argv();
-	if (argv.length != 1) {
-		rpc.fail(new Error('expected one argument'));
-		return;
-	}
-
-	timems = argv[0].ms;
-	maxtimems = 30 * 60 * 1000;	/* 30 minutes */
-	if (typeof (timems) != 'number' || timems < 0 || timems > maxtimems) {
-		rpc.fail(new Error('bad value for "ms"'));
-		return;
-	}
-
-	setTimeout(function () { rpc.end(); }, timems);
-}
-
-function fastRpcWords(rpc)
-{
-	var wordfile, wordstream, lstream, xform;
-
-	if (rpc.argv().length !== 0) {
-		rpc.fail(new Error('expected 0 arguments'));
-		return;
-	}
-
-	wordfile = '/usr/dict/words';
-	wordstream = mod_fs.createReadStream(wordfile);
-	lstream = new mod_lstream();
-	wordstream.pipe(lstream);
-	xform = new mod_stream.Transform({
-	    'objectMode': true,
-	    'highWaterMark': 1
-	});
-	xform._transform = function (c, _, callback) {
-		this.push({ 'word': c });
-		setImmediate(callback);
-	};
-	lstream.pipe(xform);
-	xform.pipe(rpc);
-	wordstream.on('error', function (err) {
-		rpc.fail(new VError(err, 'open/read "%s"', wordfile));
-	});
-}
-
-function fastRpcYes(rpc)
-{
-	var argv, value, count, i;
-
-	argv = rpc.argv();
-	if (argv.length != 1) {
-		rpc.fail(new Error('expected one argument'));
-		return;
-	}
-
-	value = argv[0].value;
-	count = argv[0].count;
-	if (typeof (count) != 'number' || count < 1 || count > 10240) {
-		rpc.fail(new VError({
-		    'info': {
-			'foundValue': count,
-			'minValue': 1,
-			'maxValue': 10240
-		    }
-		}, 'count must be an integer in range [1, 10240]'));
-		return;
-	}
-
-	for (i = 0; i < count; i++) {
-		rpc.write({ 'value': value });
-	}
-
-	rpc.end();
 }
 
 main();
