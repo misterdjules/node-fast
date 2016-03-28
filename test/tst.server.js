@@ -20,6 +20,7 @@ var mod_vasync = require('vasync');
 
 var mod_fast = require('../lib/fast');
 var mod_fastdemo = require('../lib/demo_server');
+var mod_protocol = require('../lib/fast_protocol');
 var mod_testcommon = require('./common');
 
 var VError = require('verror');
@@ -73,6 +74,8 @@ ServerTestContext.prototype.connectClient = function (callback)
 	});
 
 	csock.on('connect', function () {
+		self.ts_log.info('connected client', self.ts_clients.length);
+
 		self.ts_clients.push({
 		    'tsc_socket': csock,
 		    'tsc_client': cclient
@@ -460,18 +463,218 @@ serverTestCases = [ {
 	});
     }
 
+}, {
+    'name': 'connection error with requests outstanding: protocol error',
+    'run': function (tctx, callback) {
+	var client1 = tctx.firstFastClient();
+
+	runConnFailureTest(tctx, function () {
+		/*
+		 * Inject a protocol error via the first client.
+		 */
+		mod_assertplus.ok(client1 instanceof mod_fast.FastClient);
+		mod_assertplus.object(client1.fc_msgencoder,
+		    'test error (needs to be updated for FastClient ' +
+		    'implementation change?');
+		client1.fc_msgencoder.write({
+		    'msgid': 7,
+		    'status': mod_protocol.FP_STATUS_END,
+		    'data': { 'd': [] }
+		});
+		return (true);
+	}, function (err) {
+		mod_assertplus.equal(err.name, 'FastProtocolError');
+	}, callback);
+    }
+
+}, {
+    'name': 'connection error with requests outstanding: socket error',
+    'run': function (tctx, callback) {
+	runConnFailureTest(tctx, function () {
+		/*
+		 * Inject a socket error via the first client.
+		 */
+		mod_assertplus.object(tctx.ts_server.fs_conns,
+		    'test error (needs to be updated for FastServer ' +
+		    'implementation change?');
+		mod_assertplus.ok(tctx.ts_server.fs_conns.hasOwnProperty(1));
+		mod_assertplus.object(tctx.ts_server.fs_conns[1].fc_socket);
+		tctx.ts_clients[0].tsc_socket.destroy();
+
+		/*
+		 * Note that since we're destroying the local socket, it won't
+		 * emit an error, so we have to detach the transport in order to
+		 * get the local client requests to complete.
+		 */
+		tctx.ts_clients[0].tsc_client.detach();
+		tctx.ts_server.fs_conns[1].fc_socket.write('boom');
+		return (false);
+	}, function (err) {
+		mod_assertplus.equal(err.name, 'FastTransportError');
+	}, callback);
+    }
+
 /*
  * More test cases:
- * - invalid message sent by client (e.g., protocol error), no other RPCs
- *   pending
- * - invalid message sent by client (e.g., protocol error), with other RPCs
- *   pending
  * - unexpected end-of-stream from client while request is outstanding
- * - socket error from client while request is outstanding
- * - non-'data' message sent by client
+ *   (should work)
  * - sending large number of data messages back
  * - flow control?
  */
 } ];
+
+function runConnFailureTest(tctx, injectFail, checkError, callback)
+{
+	var client1, client2, rqbarrier, rsbarrier;
+	var rpcs, client2cb;
+	var log = tctx.ts_log;
+
+	/*
+	 * The flow of control in this test case is pretty complicated.  We're
+	 * trying to test what happens when there are multiple clients, client1
+	 * and client2, that are connected with outstanding RPC requests and one
+	 * of the connections, client1, experiences an error.  The expected
+	 * behavior is that all of client1's requests fail immediately while
+	 * client2's request is unaffected.  We test this by doing the
+	 * following:
+	 *
+	 *     1) Set up a second client connection to the server.  (All tests
+	 *        come in with one client already set up.)
+	 *
+	 *     2) Issue three requests from client1 and one request from
+	 *        client2 and wait for all four requests to be received by the
+	 *        server.  To wait for this, we use a vasync barrier called
+	 *        "rqbarrier".
+	 *
+	 *     3) Inject an error into client1's connection.  This should
+	 *        trigger the server to fail all of the requests outstanding on
+	 *        that connection.  Wait for all three client1 requests to
+	 *        complete on the client.  This uses another vasync barrier
+	 *        called "rsbarrier".
+	 *
+	 *     4) On the server, complete the client2 request normally and wait
+	 *        for it to complete on the client with the expected result.
+	 *
+	 * The keys for each barrier include the connid and request id.  In
+	 * order to respond to RPC requests, we need to keep track of each
+	 * request in "rpcs".
+	 */
+	client1 = tctx.firstFastClient();
+	rpcs = {};
+	rqbarrier = mod_vasync.barrier();
+	rqbarrier.start('rpc 1/1');		/* wait for client1 requests */
+	rqbarrier.start('rpc 1/2');
+	rqbarrier.start('rpc 1/3');
+	rqbarrier.start('rpc 2/1');		/* wait for client2 requests */
+	rsbarrier = mod_vasync.barrier();
+	rsbarrier.start('response 1/0');	/* wait for client1 responses */
+	rsbarrier.start('response 1/1');
+	rsbarrier.start('response 1/2');
+
+	mod_vasync.pipeline({ 'funcs': [
+	    function initSecondClient(_, next) {
+		/*
+		 * Make a second client connection so that we can verify that
+		 * its requests are unaffected by connection-level failures.
+		 */
+		tctx.connectClient(next);
+	    },
+
+	    function makeRequests(_, next) {
+		client2 = tctx.ts_clients[1].tsc_client;
+
+		/*
+		 * Register an RPC handler that will cause this pipeline to
+		 * advance once all four RPC requests have been received by the
+		 * server.
+		 */
+		tctx.ts_server.registerRpcMethod({
+		    'rpcmethod': 'block',
+		    'rpchandler': function fastRpcBlock(rpc) {
+			var connid = rpc.connectionId();
+			var reqid = rpc.requestId();
+			rpcs[connid + '/' + reqid] = rpc;
+			rqbarrier.done('rpc ' + connid + '/' + reqid);
+		    }
+		});
+
+		rqbarrier.on('drain', next);
+
+		/*
+		 * Kick off the requests from the clients.
+		 */
+		[ 0, 1, 2 ].forEach(function (i) {
+			clientMakeRpcCallback(client1,
+			    { 'rpcmethod': 'block', 'rpcargs': [] },
+			    function (err, data) {
+				/*
+				 * Note that this callback will not be invoked
+				 * until several stages later in the pipeline.
+				 */
+				mod_assertplus.equal(err.name,
+				    'FastRequestError');
+				checkError(err.cause());
+				rsbarrier.done('response 1/' + i);
+			    });
+		});
+
+		clientMakeRpcCallback(client2,
+		    { 'rpcmethod': 'block', 'rpcargs': [] },
+		    function (err, data) {
+			/*
+			 * Like above, this won't be invoked until a few stages
+			 * later in this pipeline, by which point a later stage
+			 * will have set client2cb.
+			 */
+			mod_assertplus.ok(!err);
+			mod_assertplus.deepEqual(data, [ { 'value': 52 } ]);
+			client2cb();
+		    });
+	    },
+
+	    function injectError(_, next) {
+		var clientErrorExpected;
+
+		rsbarrier.start('client error');
+		client1.on('error', function (err) {
+			mod_assertplus.equal(err.name, 'FastProtocolError');
+			rsbarrier.done('client error');
+		});
+
+		/*
+		 * Wait for the server to fail outstanding requests on this
+		 * client.
+		 */
+		rsbarrier.on('drain', next);
+
+		log.info('injecting failure and waiting for completion');
+		clientErrorExpected = injectFail();
+		mod_assertplus.bool(clientErrorExpected,
+		    'injectFail must return boolean');
+		if (!clientErrorExpected) {
+			rsbarrier.done('client error');
+		}
+	    },
+
+	    function respondToClient2(_, next) {
+		/*
+		 * Set up a handler to be invoked when the client2 request
+		 * completes on the client.
+		 */
+		client2cb = next;
+
+		/*
+		 * End all of the client requests.  The client1 request data
+		 * will be black-holed, while the client2 request will work
+		 * normally.
+		 */
+		log.info('responding to client2 and waiting for client');
+		rpcs['1/1'].end({ 'value': 11 });
+		rpcs['1/2'].end({ 'value': 12 });
+		rpcs['1/3'].end({ 'value': 13 });
+		rpcs['2/1'].end({ 'value': 52 });
+	    }
+	] }, callback);
+}
 
 main();
