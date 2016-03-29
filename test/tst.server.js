@@ -215,6 +215,160 @@ function runTestCase(testcase, callback)
 	});
 }
 
+function runConnFailureTest(tctx, injectFail, checkError, callback)
+{
+	var client1, client2, rqbarrier, rsbarrier;
+	var rpcs, client2cb;
+	var log = tctx.ts_log;
+
+	/*
+	 * The flow of control in this test case is pretty complicated.  We're
+	 * trying to test what happens when there are multiple clients, client1
+	 * and client2, that are connected with outstanding RPC requests and one
+	 * of the connections, client1, experiences an error.  The expected
+	 * behavior is that all of client1's requests fail immediately while
+	 * client2's request is unaffected.  We test this by doing the
+	 * following:
+	 *
+	 *     1) Set up a second client connection to the server.  (All tests
+	 *        come in with one client already set up.)
+	 *
+	 *     2) Issue three requests from client1 and one request from
+	 *        client2 and wait for all four requests to be received by the
+	 *        server.  To wait for this, we use a vasync barrier called
+	 *        "rqbarrier".
+	 *
+	 *     3) Inject an error into client1's connection.  This should
+	 *        trigger the server to fail all of the requests outstanding on
+	 *        that connection.  Wait for all three client1 requests to
+	 *        complete on the client.  This uses another vasync barrier
+	 *        called "rsbarrier".
+	 *
+	 *     4) On the server, complete the client2 request normally and wait
+	 *        for it to complete on the client with the expected result.
+	 *
+	 * The keys for each barrier include the connid and request id.  In
+	 * order to respond to RPC requests, we need to keep track of each
+	 * request in "rpcs".
+	 */
+	client1 = tctx.firstFastClient();
+	rpcs = {};
+	rqbarrier = mod_vasync.barrier();
+	rqbarrier.start('rpc 1/1');		/* wait for client1 requests */
+	rqbarrier.start('rpc 1/2');
+	rqbarrier.start('rpc 1/3');
+	rqbarrier.start('rpc 2/1');		/* wait for client2 requests */
+	rsbarrier = mod_vasync.barrier();
+	rsbarrier.start('response 1/0');	/* wait for client1 responses */
+	rsbarrier.start('response 1/1');
+	rsbarrier.start('response 1/2');
+
+	mod_vasync.pipeline({ 'funcs': [
+	    function initSecondClient(_, next) {
+		/*
+		 * Make a second client connection so that we can verify that
+		 * its requests are unaffected by connection-level failures.
+		 */
+		tctx.connectClient(next);
+	    },
+
+	    function makeRequests(_, next) {
+		client2 = tctx.ts_clients[1].tsc_client;
+
+		/*
+		 * Register an RPC handler that will cause this pipeline to
+		 * advance once all four RPC requests have been received by the
+		 * server.
+		 */
+		tctx.ts_server.registerRpcMethod({
+		    'rpcmethod': 'block',
+		    'rpchandler': function fastRpcBlock(rpc) {
+			var connid = rpc.connectionId();
+			var reqid = rpc.requestId();
+			rpcs[connid + '/' + reqid] = rpc;
+			rqbarrier.done('rpc ' + connid + '/' + reqid);
+		    }
+		});
+
+		rqbarrier.on('drain', next);
+
+		/*
+		 * Kick off the requests from the clients.
+		 */
+		[ 0, 1, 2 ].forEach(function (i) {
+			clientMakeRpcCallback(client1,
+			    { 'rpcmethod': 'block', 'rpcargs': [] },
+			    function (err, data) {
+				/*
+				 * Note that this callback will not be invoked
+				 * until several stages later in the pipeline.
+				 */
+				mod_assertplus.equal(err.name,
+				    'FastRequestError');
+				checkError(err.cause());
+				rsbarrier.done('response 1/' + i);
+			    });
+		});
+
+		clientMakeRpcCallback(client2,
+		    { 'rpcmethod': 'block', 'rpcargs': [] },
+		    function (err, data) {
+			/*
+			 * Like above, this won't be invoked until a few stages
+			 * later in this pipeline, by which point a later stage
+			 * will have set client2cb.
+			 */
+			mod_assertplus.ok(!err);
+			mod_assertplus.deepEqual(data, [ { 'value': 52 } ]);
+			client2cb();
+		    });
+	    },
+
+	    function injectError(_, next) {
+		var clientErrorExpected;
+
+		rsbarrier.start('client error');
+		client1.on('error', function (err) {
+			mod_assertplus.equal(err.name, 'FastProtocolError');
+			rsbarrier.done('client error');
+		});
+
+		/*
+		 * Wait for the server to fail outstanding requests on this
+		 * client.
+		 */
+		rsbarrier.on('drain', next);
+
+		log.info('injecting failure and waiting for completion');
+		clientErrorExpected = injectFail();
+		mod_assertplus.bool(clientErrorExpected,
+		    'injectFail must return boolean');
+		if (!clientErrorExpected) {
+			rsbarrier.done('client error');
+		}
+	    },
+
+	    function respondToClient2(_, next) {
+		/*
+		 * Set up a handler to be invoked when the client2 request
+		 * completes on the client.
+		 */
+		client2cb = next;
+
+		/*
+		 * End all of the client requests.  The client1 request data
+		 * will be black-holed, while the client2 request will work
+		 * normally.
+		 */
+		log.info('responding to client2 and waiting for client');
+		rpcs['1/1'].end({ 'value': 11 });
+		rpcs['1/2'].end({ 'value': 12 });
+		rpcs['1/3'].end({ 'value': 13 });
+		rpcs['2/1'].end({ 'value': 52 });
+	    }
+	] }, callback);
+}
+
 serverTestCases = [ {
     'name': 'basic RPC: no data',
     'run': function (tctx, callback) {
@@ -514,167 +668,130 @@ serverTestCases = [ {
 	}, callback);
     }
 
-/*
- * More test cases:
- * - unexpected end-of-stream from client while request is outstanding
- *   (should work)
- * - sending large number of data messages back
- * - flow control?
- */
-} ];
+}, {
+    'name': 'basic RPC with immediate end-of-stream',
+    'run': function (tctx, callback) {
+	clientMakeRpcCallback(tctx.firstFastClient(),  {
+	    'rpcmethod': 'sleep',
+	    'rpcargs': [ { 'ms': 100 } ]
+	}, function (err, data) {
+		err = expectRpcResult({
+		    'errorActual': err,
+		    'errorExpected': null,
+		    'dataActual': data,
+		    'dataExpected': []
+		});
 
-function runConnFailureTest(tctx, injectFail, checkError, callback)
-{
-	var client1, client2, rqbarrier, rsbarrier;
-	var rpcs, client2cb;
-	var log = tctx.ts_log;
+		callback(err);
+	});
+
+	tctx.ts_clients[0].tsc_socket.end();
+    }
+
+}, {
+    'name': 'RPC with large amount of data',
+    'run': function (tctx, callback) {
+	clientMakeRpcCallback(tctx.firstFastClient(),  {
+	    'rpcmethod': 'yes',
+	    'rpcargs': [ {
+	        'count': 50000,
+		'value': 'undefined will not be used as a variable name'
+	    } ]
+	}, function (err, data) {
+		/*
+		 * It's only with great restraint that this variable was not
+		 * itself named "undefined".
+		 */
+		var expected = [];
+		var i;
+
+		for (i = 0; i < 50000; i++) {
+			expected.push({
+			    'value': 'undefined will not be used as a ' +
+			        'variable name'
+			});
+		}
+
+		err = expectRpcResult({
+		    'errorActual': err,
+		    'errorExpected': null,
+		    'dataActual': data,
+		    'dataExpected': expected
+		});
+
+		callback(err);
+	});
+
+	tctx.ts_clients[0].tsc_socket.end();
+    }
+
+}, {
+    'name': 'flow control from server to client',
+    'run': function (tctx, callback) {
+	var log, client, request, csock;
+	var ndata = 0;
 
 	/*
-	 * The flow of control in this test case is pretty complicated.  We're
-	 * trying to test what happens when there are multiple clients, client1
-	 * and client2, that are connected with outstanding RPC requests and one
-	 * of the connections, client1, experiences an error.  The expected
-	 * behavior is that all of client1's requests fail immediately while
-	 * client2's request is unaffected.  We test this by doing the
-	 * following:
-	 *
-	 *     1) Set up a second client connection to the server.  (All tests
-	 *        come in with one client already set up.)
-	 *
-	 *     2) Issue three requests from client1 and one request from
-	 *        client2 and wait for all four requests to be received by the
-	 *        server.  To wait for this, we use a vasync barrier called
-	 *        "rqbarrier".
-	 *
-	 *     3) Inject an error into client1's connection.  This should
-	 *        trigger the server to fail all of the requests outstanding on
-	 *        that connection.  Wait for all three client1 requests to
-	 *        complete on the client.  This uses another vasync barrier
-	 *        called "rsbarrier".
-	 *
-	 *     4) On the server, complete the client2 request normally and wait
-	 *        for it to complete on the client with the expected result.
-	 *
-	 * The keys for each barrier include the connid and request id.  In
-	 * order to respond to RPC requests, we need to keep track of each
-	 * request in "rpcs".
+	 * This test case has an analog in the server test suite.  Changes here
+	 * may need to be reflected there.  As described in more detail there,
+	 * the scope of flow control is limited because of the way multiple
+	 * requests are multiplexed over a single socket.
 	 */
-	client1 = tctx.firstFastClient();
-	rpcs = {};
-	rqbarrier = mod_vasync.barrier();
-	rqbarrier.start('rpc 1/1');		/* wait for client1 requests */
-	rqbarrier.start('rpc 1/2');
-	rqbarrier.start('rpc 1/3');
-	rqbarrier.start('rpc 2/1');		/* wait for client2 requests */
-	rsbarrier = mod_vasync.barrier();
-	rsbarrier.start('response 1/0');	/* wait for client1 responses */
-	rsbarrier.start('response 1/1');
-	rsbarrier.start('response 1/2');
-
-	mod_vasync.pipeline({ 'funcs': [
-	    function initSecondClient(_, next) {
-		/*
-		 * Make a second client connection so that we can verify that
-		 * its requests are unaffected by connection-level failures.
-		 */
-		tctx.connectClient(next);
-	    },
-
-	    function makeRequests(_, next) {
-		client2 = tctx.ts_clients[1].tsc_client;
-
-		/*
-		 * Register an RPC handler that will cause this pipeline to
-		 * advance once all four RPC requests have been received by the
-		 * server.
-		 */
-		tctx.ts_server.registerRpcMethod({
-		    'rpcmethod': 'block',
-		    'rpchandler': function fastRpcBlock(rpc) {
-			var connid = rpc.connectionId();
-			var reqid = rpc.requestId();
-			rpcs[connid + '/' + reqid] = rpc;
-			rqbarrier.done('rpc ' + connid + '/' + reqid);
-		    }
+	log = tctx.ts_log;
+	client = tctx.firstFastClient();
+	tctx.ts_server.registerRpcMethod({
+	    'rpcmethod': 'faucet',
+	    'rpchandler': function (rpc) {
+		var source = new mod_testcommon.FlowControlSource({
+		    'datum': {
+		        'value': 'null cannot be used as a variable name'
+		    },
+		    'restMs': 1000,
+		    'log': tctx.ts_log.child({
+		        'component': 'FlowControlSource'
+		    })
 		});
 
-		rqbarrier.on('drain', next);
+		source.pipe(rpc);
+		source.once('resting', function () {
+			log.debug('came to rest; verifying and moving on');
+			mod_assertplus.ok(mod_testcommon.isFlowControlled(
+			    csock));
+			mod_assertplus.equal('number',
+			    typeof (csock._readableState.length));
+			mod_assertplus.equal('number',
+			    typeof (csock._readableState.highWaterMark));
+			mod_assertplus.ok(csock._readableState.length >=
+			    csock._readableState.highWaterMark);
 
-		/*
-		 * Kick off the requests from the clients.
-		 */
-		[ 0, 1, 2 ].forEach(function (i) {
-			clientMakeRpcCallback(client1,
-			    { 'rpcmethod': 'block', 'rpcargs': [] },
-			    function (err, data) {
-				/*
-				 * Note that this callback will not be invoked
-				 * until several stages later in the pipeline.
-				 */
-				mod_assertplus.equal(err.name,
-				    'FastRequestError');
-				checkError(err.cause());
-				rsbarrier.done('response 1/' + i);
-			    });
+			csock.resume();
+			source.stop();
 		});
-
-		clientMakeRpcCallback(client2,
-		    { 'rpcmethod': 'block', 'rpcargs': [] },
-		    function (err, data) {
-			/*
-			 * Like above, this won't be invoked until a few stages
-			 * later in this pipeline, by which point a later stage
-			 * will have set client2cb.
-			 */
-			mod_assertplus.ok(!err);
-			mod_assertplus.deepEqual(data, [ { 'value': 52 } ]);
-			client2cb();
-		    });
-	    },
-
-	    function injectError(_, next) {
-		var clientErrorExpected;
-
-		rsbarrier.start('client error');
-		client1.on('error', function (err) {
-			mod_assertplus.equal(err.name, 'FastProtocolError');
-			rsbarrier.done('client error');
-		});
-
-		/*
-		 * Wait for the server to fail outstanding requests on this
-		 * client.
-		 */
-		rsbarrier.on('drain', next);
-
-		log.info('injecting failure and waiting for completion');
-		clientErrorExpected = injectFail();
-		mod_assertplus.bool(clientErrorExpected,
-		    'injectFail must return boolean');
-		if (!clientErrorExpected) {
-			rsbarrier.done('client error');
-		}
-	    },
-
-	    function respondToClient2(_, next) {
-		/*
-		 * Set up a handler to be invoked when the client2 request
-		 * completes on the client.
-		 */
-		client2cb = next;
-
-		/*
-		 * End all of the client requests.  The client1 request data
-		 * will be black-holed, while the client2 request will work
-		 * normally.
-		 */
-		log.info('responding to client2 and waiting for client');
-		rpcs['1/1'].end({ 'value': 11 });
-		rpcs['1/2'].end({ 'value': 12 });
-		rpcs['1/3'].end({ 'value': 13 });
-		rpcs['2/1'].end({ 'value': 52 });
 	    }
-	] }, callback);
-}
+	});
+
+	/*
+	 * We deliberately don't add a "data" listener until later.
+	 */
+	request = client.rpc({
+	    'rpcmethod': 'faucet',
+	    'rpcargs': [ {
+		'count': 10000,
+		'value': 'null cannot be used as a variable name'
+	    } ]
+	});
+
+	request.on('data', function (d) { ndata++; });
+
+	request.on('end', function () {
+		log.debug('finished after %d data items', ndata);
+		callback();
+	});
+
+	csock = tctx.ts_clients[0].tsc_socket;
+	csock.pause();
+    }
+
+} ];
 
 main();

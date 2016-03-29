@@ -49,6 +49,7 @@ exports.mockServerSetup = mockServerSetup;
 exports.mockServerTeardown = mockServerTeardown;
 exports.assertRequestError = assertRequestError;
 exports.FlowControlSource = FlowControlSource;
+exports.isFlowControlled = isFlowControlled;
 exports.registerExitBlocker = registerExitBlocker;
 exports.unregisterExitBlocker = unregisterExitBlocker;
 
@@ -237,6 +238,28 @@ FlowControlSource.prototype.onTimeout = function ()
 	this.fcs_log.debug(state, 'coming to rest');
 	this.emit('resting', state);
 };
+
+
+/*
+ * Returns true only if the given stream appears to be flow-controlled.
+ *
+ * These checks are brittle because they depend on internal Node implementation
+ * details.  However, if those details change, the failure here is likely to be
+ * explicit, and we can decide how best to fix them.  We could skip these checks
+ * entirely, but we'd like to be sure that the flow-control mechanism was
+ * definitely engaged and that it was engaged because the client is backed up.
+ * If this check fails, and the Node internals on which it relies have not
+ * changed, that means that we inadvertently decided the server was
+ * flow-controlled above even though the client's buffer is not full.
+ */
+function isFlowControlled(stream)
+{
+	mod_assertplus.equal('number', typeof (stream._readableState.length));
+	mod_assertplus.equal('number',
+	    typeof (stream._readableState.highWaterMark));
+	return (stream._readableState.length >=
+	    stream._readableState.highWaterMark);
+}
 
 
 /*

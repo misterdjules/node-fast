@@ -631,6 +631,10 @@ var test_cases = [ {
     'run': function (ctc, callback) {
 	var req, source;
 
+	/*
+	 * This test case has an analog in the server test suite.  Changes here
+	 * may need to be reflected there.
+	 */
 	mod_vasync.waterfall([
 	    function makeRequest(next) {
 		/*
@@ -688,12 +692,8 @@ var test_cases = [ {
 		 * even though the client's buffer is not full.
 		 */
 		ctc.ctc_log.debug('came to rest; verifying and moving on');
-		mod_assertplus.equal('number',
-		    typeof (ctc.ctc_client_sock._readableState.length));
-		mod_assertplus.equal('number',
-		    typeof (ctc.ctc_client_sock._readableState.highWaterMark));
-		mod_assertplus.ok(ctc.ctc_client_sock._readableState.length >=
-		    ctc.ctc_client_sock._readableState.highWaterMark);
+		mod_assertplus.ok(mod_testcommon.isFlowControlled(
+		    ctc.ctc_client_sock));
 
 		/*
 		 * Stop the source and release the flow control.  Add an "error"
