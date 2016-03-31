@@ -4,7 +4,8 @@ This is version 2 of the [node-fast](https://github.com/mcavage/node-fast)
 client library.  Fast is a simple RPC protocol used in Joyent's
 [SmartDataCenter](http://github.com/joyent/sdc) and
 [Manta](https://github.com/joyent/manta) systems, particularly in the
-[Moray](https://github.com/joyent/moray) key-value store.
+[Moray](https://github.com/joyent/moray) key-value store.  This README contains
+usage notes.  For developers, see CONTRIBUTING.md.
 
 Despite the name, this module contains an implementation of the protocol version
 **1** (it's just a new implementation).  The module includes:
@@ -52,14 +53,14 @@ For an example client and server, see the [fastcall](bin/fastcall) and
 
 The Fast protocol is intended for internal systems.  It does not support
 authentication.  Neither the client nor server implementations are hardened
-against bad behavior from byzantine clients (e.g., denial-of-service
-protection).
+against byzantine behavior (e.g., denial-of-service attacks).
 
 Previous implementations of the Fast protocol supported cancellation, but it was
 dangerous to use with servers that did not support it, and there was no way to
 tell if the server did support it.  As a result, this implementation does not
 support cancellation of in-flight requests.  (There's an `abort()` function in
-the client API, but it just logically aborts the request.)
+the client API, but it only causes the request stream to fail.  The underlying
+RPC continues executing and incoming messages are ignored.)
 
 Early versions of the original node-fast module used a
 [buggy](https://github.com/alexgorbatchev/node-crc/issues/29) CRC
@@ -112,6 +113,8 @@ Name            | Type         | Meaning
 --------------- | ------------ | -------
 `rpcmethod`     | string       | name of the RPC method to invoke on the server
 `rpcargs`       | array        | JSON-serializable array of RPC call arguments
+`timeout`       | integer      | (optional) milliseconds after which to abort the request if it has not already completed.  The default is that there is no timeout.
+`log`           | object       | (optional) bunyan logger for this request.  If not specified, a child logger of the client-level logger will be used.
 
 The return value is an object-mode stream that consumers use to interact with
 the request.  Objects sent by the server to the client are made available via
@@ -159,9 +162,11 @@ Name            | Type         | Meaning
 Public methods:
 
 * `registerRpcMethod(args)`: register an RPC method handler
+* `rpc.connectionId()`: returns a unique identifier for this connection
 * `rpc.requestId()`: returns a unique identifier for this request
 * `rpc.methodName()`: returns the client-specified name of this request
-* `rpc.argv()`: returns the arguments provided by the client for the request
+* `rpc.argv()`: returns the array of arguments provided by the client for the
+  request
 * `rpc.fail(err)`: report failure of the RPC request with the specified error
 * `close()`: shut down the server
 
@@ -253,9 +258,9 @@ they do not re-use a message identifier for separate requests.
 
 **Server sends data from an RPC call.**  RPC calls may emit an arbitrary number
 of values back to the client.  To emit these values, the server sends `DATA`
-messages with `data.d` set to an array of values to be emitted.  All `DATA`
-messages for the same RPC request have the same message identifier that the
-client included in its original `DATA` message that initiated the RPC call.
+messages with `data.d` set to an array of non-null values to be emitted.  All
+`DATA` messages for the same RPC request have the same message identifier that
+the client included in its original `DATA` message that initiated the RPC call.
 
 **Server completes an RPC call successfully.** When an RPC call completes
 successfully, the server sends an `END` event having the same message identifier

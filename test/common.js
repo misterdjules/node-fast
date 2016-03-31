@@ -52,6 +52,7 @@ exports.FlowControlSource = FlowControlSource;
 exports.isFlowControlled = isFlowControlled;
 exports.registerExitBlocker = registerExitBlocker;
 exports.unregisterExitBlocker = unregisterExitBlocker;
+exports.clientMakeRpcCallback = clientMakeRpcCallback;
 
 /*
  * Construct a plain-old-JavaScript object whose size is linear in "width" and
@@ -299,4 +300,34 @@ function unregisterExitBlocker(name)
 	    'exit blocker "' + name + '" is not registered');
 	process.removeListener('exit', exitBlockers[name]);
 	delete (exitBlockers[name]);
+}
+
+/*
+ * XXX move somewhere else?
+ */
+function clientMakeRpcCallback(fastclient, rpcargs, callback)
+{
+	var request, data, done;
+
+	mod_assertplus.object(fastclient, 'fastclient');
+	mod_assertplus.object(rpcargs, 'rpcargs');
+	mod_assertplus.func(callback, 'callback');
+
+	request = fastclient.rpc(rpcargs);
+
+	data = [];
+	request.on('data', function (c) { data.push(c); });
+
+	done = false;
+	request.on('error', function (err) {
+		mod_assertplus.ok(!done);
+		done = true;
+		callback(err, data);
+	});
+
+	request.on('end', function () {
+		mod_assertplus.ok(!done);
+		done = true;
+		callback(null, data);
+	});
 }
