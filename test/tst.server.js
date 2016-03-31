@@ -102,36 +102,6 @@ ServerTestContext.prototype.cleanup = function ()
 	this.ts_server.close();
 };
 
-/*
- * XXX move somewhere else?
- */
-function clientMakeRpcCallback(fastclient, rpcargs, callback)
-{
-	var request, data, done;
-
-	mod_assertplus.object(fastclient, 'fastclient');
-	mod_assertplus.object(rpcargs, 'rpcargs');
-	mod_assertplus.func(callback, 'callback');
-
-	request = fastclient.rpc(rpcargs);
-
-	data = [];
-	request.on('data', function (c) { data.push(c); });
-
-	done = false;
-	request.on('error', function (err) {
-		mod_assertplus.ok(!done);
-		done = true;
-		callback(err, data);
-	});
-
-	request.on('end', function () {
-		mod_assertplus.ok(!done);
-		done = true;
-		callback(null, data);
-	});
-}
-
 function expectRpcResult(args)
 {
 	mod_assertplus.object(args, 'args');
@@ -296,7 +266,7 @@ function runConnFailureTest(tctx, injectFail, checkError, callback)
 		 * Kick off the requests from the clients.
 		 */
 		[ 0, 1, 2 ].forEach(function (i) {
-			clientMakeRpcCallback(client1,
+			mod_testcommon.clientMakeRpcCallback(client1,
 			    { 'rpcmethod': 'block', 'rpcargs': [] },
 			    function (err, data) {
 				/*
@@ -310,7 +280,7 @@ function runConnFailureTest(tctx, injectFail, checkError, callback)
 			    });
 		});
 
-		clientMakeRpcCallback(client2,
+		mod_testcommon.clientMakeRpcCallback(client2,
 		    { 'rpcmethod': 'block', 'rpcargs': [] },
 		    function (err, data) {
 			/*
@@ -372,7 +342,7 @@ function runConnFailureTest(tctx, injectFail, checkError, callback)
 serverTestCases = [ {
     'name': 'basic RPC: no data',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(),  {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(),  {
 	    'rpcmethod': 'echo',
 	    'rpcargs': []
 	}, function (err, data) {
@@ -390,7 +360,7 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: 1 data item',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(), {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
 	    'rpcmethod': 'echo',
 	    'rpcargs': [ 'lafayette' ]
 	}, function (err, data) {
@@ -408,7 +378,7 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: several data items',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(), {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
 	    'rpcmethod': 'echo',
 	    'rpcargs': [
 	        { 'matches': [ 'tactical', 'brilliance' ] },
@@ -437,7 +407,7 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: 0 data items, plus error',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(), {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
 	    'rpcmethod': 'fail',
 	    'rpcargs': [ {
 		'name': 'MyStupidError',
@@ -480,7 +450,7 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: several data items, plus error',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(), {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
 	    'rpcmethod': 'fail',
 	    'rpcargs': [ {
 		'data': [ 'one', 'two', 'three' ],
@@ -536,7 +506,7 @@ serverTestCases = [ {
 }, {
     'name': 'RPC for non-existent method',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(), {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
 	    'rpcmethod': 'badmethod',
 	    'rpcargs': []
 	}, function (err, data) {
@@ -599,7 +569,8 @@ serverTestCases = [ {
 	        { 'rpcmethod': 'recordAndReturn', 'rpcargs': [] }
 	    ],
 	    'func': function makeRpc(rpcargs, next) {
-		clientMakeRpcCallback(tctx.firstFastClient(), rpcargs, next);
+		mod_testcommon.clientMakeRpcCallback(
+		    tctx.firstFastClient(), rpcargs, next);
 	    }
 	}, function (err, results) {
 		if (err) {
@@ -671,7 +642,7 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC with immediate end-of-stream',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(),  {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(),  {
 	    'rpcmethod': 'sleep',
 	    'rpcargs': [ { 'ms': 100 } ]
 	}, function (err, data) {
@@ -691,7 +662,7 @@ serverTestCases = [ {
 }, {
     'name': 'RPC with large amount of data',
     'run': function (tctx, callback) {
-	clientMakeRpcCallback(tctx.firstFastClient(),  {
+	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(),  {
 	    'rpcmethod': 'yes',
 	    'rpcargs': [ {
 	        'count': 50000,

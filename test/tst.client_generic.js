@@ -123,8 +123,8 @@ function runDuplicateResponseTest(ctc, firstIsError, secondStatus, callback)
 		    'msgid': ctc.ctc_server_message.msgid,
 		    'status': secondStatus,
 		    'data': secondStatus === mod_protocol.FP_STATUS_ERROR ?
-		        mod_testcommon.dummyResponseError :
-		        mod_testcommon.dummyResponseData
+			mod_testcommon.dummyResponseError :
+			mod_testcommon.dummyResponseData
 		});
 
 		/*
@@ -349,6 +349,31 @@ var test_cases = [ {
 		mod_assertplus.equal(VError.info(error).fastMsgid, 0x7);
 		mod_assertplus.equal(error.message,
 		    'fast protocol: received message with unknown msgid 7');
+		ctc.cleanup();
+		callback();
+	});
+    }
+
+}, {
+    'name': 'server sends message with null value',
+    'run': function (ctc, callback) {
+	var ctr;
+
+	ctc.ctc_server_decoder.once('data', function (message) {
+		ctc.ctc_server_encoder.end({
+		    'msgid': message.msgid,
+		    'status': mod_protocol.FP_STATUS_END,
+		    'data': { 'd': [ true, null, 7 ] }
+		});
+	});
+
+	ctr = ctc.makeRequest(function () {
+		mod_assertplus.ok(ctr.ctr_error !== null);
+		mod_assertplus.deepEqual(ctr.ctr_data, [ true ]);
+		mod_assertplus.equal(ctr.ctr_error.cause().name,
+		    'FastProtocolError');
+		mod_assertplus.equal(ctr.ctr_error.cause().message,
+		    'server sent "null" value');
 		ctc.cleanup();
 		callback();
 	});
@@ -669,7 +694,7 @@ var test_cases = [ {
 			    'datum': outmessage,
 			    'restMs': 1000,
 			    'log': ctc.ctc_log.child({
-			        'component': 'FlowControlSource'
+				'component': 'FlowControlSource'
 			    })
 			});
 
