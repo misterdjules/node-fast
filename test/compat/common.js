@@ -94,8 +94,6 @@ function setupOldServer(args, callback)
 	mod_assertplus.number(args.port, 'args.port');
 	mod_assertplus.func(callback, 'callback');
 
-	nodebin = mod_path.join(
-	    process.env['FAST_COMPAT_NODEDIR'], 'bin', 'node');
 	testdir = __dirname;
 	serverbin = mod_path.join(testdir, 'legacy-server.js');
 
@@ -117,7 +115,7 @@ function setupOldServer(args, callback)
 
 		console.error('starting legacy server ... ');
 		child = mod_child.spawn(nodebin,
-		    [ serverbin, args.ip, args.port ],
+		    [ serverbin, '--test-mode', args.ip, args.port ],
 		    {
 		        'stdio': [
 			    process.stdin,

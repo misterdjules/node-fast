@@ -82,6 +82,9 @@ function runTestCase(testcase, callback)
 				    testcase['name'], err.message);
 				console.error(err.stack);
 			}
+
+			cclient.detach();
+			csock.destroy();
 			callback(err);
 		});
 	});

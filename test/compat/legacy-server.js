@@ -33,14 +33,20 @@ function usage()
 
 function main()
 {
-	var ip, port;
+	var ip, port, args, testmode;
 
-	if (process.argv.length != 4) {
+	args = process.argv.slice(2);
+	if (args.length > 0 && args[0] == '--test-mode') {
+		testmode = true;
+		args.shift();
+	}
+
+	if (args.length != 2) {
 		usage();
 	}
 
-	ip = process.argv[2];
-	port = process.argv[3];
+	ip = args[0];
+	port = args[1];
 	if (!mod_net.isIP(ip) || isNaN(port) || port <= 0 || port > 65535) {
 		console.error('bad IP or port number');
 		usage();
@@ -50,9 +56,12 @@ function main()
 	console.error('legacy server: startup (pid %d)', process.pid);
 	server.listen(port, ip, function () {
 		console.error('legacy server: listening on %s:%d', ip, port);
-		exitWhenParentDies();
 		setupRpcHandlers();
-		notifyParent();
+
+		if (testmode) {
+			exitWhenParentDies();
+			notifyParent();
+		}
 	});
 }
 
@@ -85,7 +94,7 @@ function notifyParent()
 function exitWhenParentDies()
 {
 	var buf = new Buffer(1);
-	mod_fs.read(3, buf, 0, 1, null, function () {
+	mod_fs.read(3, buf, 0, 1, null, function (err) {
 		console.error('legacy server: ' +
 		    'terminating after read from parent');
 		server.close();
@@ -124,6 +133,43 @@ function setupRpcHandlers()
 			response.end();
 		}
 	});
+
+	server.rpc('fastbench', function () {
+		var response, args;
+
+		/*
+		 * The varargs behavior of the original API makes this the
+		 * simplest way to get the arguments.
+		 */
+		response = arguments[arguments.length - 1];
+		args = Array.prototype.slice.call(
+		    arguments, 0, arguments.length - 1);
+		if (args.length != 1 && typeof (args[0]) != 'object' ||
+		    args[0] === null) {
+			response.end(new Error('bad arguments'));
+			return;
+		}
+
+		args = args[0];
+		if (!args.hasOwnProperty('echo') ||
+		    !Array.isArray(args['echo'])) {
+			response.end(new Error('expected arg.echo'));
+			return;
+		}
+
+		if (typeof (args['delay']) == 'number') {
+			setTimeout(fastRpcFastbenchFinish, args['delay'],
+			    response, args['echo']);
+		} else {
+			fastRpcFastbenchFinish(response, args['echo']);
+		}
+	});
+
+	function fastRpcFastbenchFinish(response, values) {
+		values.forEach(
+		    function (a) { response.write({ 'value': a }); });
+		response.end();
+	}
 }
 
 main();
