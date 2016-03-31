@@ -27,9 +27,9 @@ There are several reasons we might want to use the old implementation in this
 module:
 
 * done: basic functionality testing this client against the old server
-* not yet implemented: basic functionality testing this server against the old
+* not implemented: basic functionality testing this server against the old
   client
-* not yet implemented: for performance testing either the old client or server
+* not implemented: for performance testing either the old client or server
 
 This is made significantly more complicated by the fact that the old
 implementation only works with Node 0.10, while this implementation is expected
@@ -50,3 +50,33 @@ This will do the following:
 
 These could be incorporated into "make prepush", but developers would have to
 have `FAST_COMPAT_NODEDIR` set to a directory containing 0.10.
+
+
+## Performance testing
+
+The `fastbench` command can be used to make RPC requests to a remote server
+for a fixed number of requests, for a given period of time, or until the program
+itself is killed.  The tool reports very coarse metrics about client-side
+request performance:
+
+    $ fastbench -c 10 sync 127.0.0.1 8123
+    pid 17354: running workload "sync" until killed (type CTRL-C for results)
+    established connection to 127.0.0.1:8123
+    ^Cstopping due to SIGINT
+    -----------------------------------
+    total runtime:             4.233982s
+    total requests completed:  6063 (6073 issued)
+    total unexpected errors:   0
+    error rate:                0.00%
+    maximum concurrency:       10
+    request throughput:        1431 requests per second
+    estimated average latency: 6983 us
+
+The server must support the "fastbench" RPC method, which basically echoes its
+arguments and optionally sleeps.  The `fastserve` command implements this RPC,
+as does the legacy server in ./test/compat that's described above.
+
+This should be considered only a rough estimate of performance under very
+particular conditions.  Proper performance analysis requires not just careful
+collection of data, but also understanding exactly what the system is doing and
+where the bottleneck is to make sure you're looking at correct numbers.

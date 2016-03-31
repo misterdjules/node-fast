@@ -16,11 +16,12 @@
 		"jsprim": "^1.2.2",
 		"lstream": "0.0.4",
 		"microtime": "2.0.0",
+		"posix-getopt": "1.2.0",
 		"vasync": "^1.6.3",
 		"verror": "git+ssh://git@github.com:davepacheco/node-verror#dev-issue-10"
 	},
 	"optionalDependencies": {
-	    "dtrace-provider": "0.6.0"
+	    "dtrace-provider": "^0.6.0"
 	},
 	"license": "MIT"
 }

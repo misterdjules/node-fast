@@ -20,7 +20,8 @@ NODE		 = node
 #
 JSON_FILES	 = package.json
 BASH_FILES	 = $(wildcard test/*.sh)
-JS_FILES	:= bin/fastcall \
+JS_FILES	:= bin/fastbench \
+		   bin/fastcall \
 		   bin/fastserve \
 		   $(shell find lib examples test -name '*.js' | \
 			grep -v ^test/compat/node_modules)

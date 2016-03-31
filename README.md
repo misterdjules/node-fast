@@ -14,6 +14,7 @@ Despite the name, this module contains an implementation of the protocol version
 * server library interface
 * `fastcall`, a command-line tool for making Fast RPC requests
 * `fastserve`, a command-line Fast server for demo and testing
+* `fastbench`, a command-line tool for very basic client load generation
 
 This rewrite was done to fix a number of issues with service discovery and
 connection management in the previous node-fast client.  Service discovery and
