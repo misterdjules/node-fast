@@ -10,9 +10,10 @@
  */
 
 /*
- * fastclatency: dump fast client request latency information
+ * fastclatencytime: dump fast client request latency information over time
  */
 
+#pragma D option aggpack
 #pragma D option aggsortkey
 #pragma D option aggzoom
 #pragma D option quiet
@@ -32,7 +33,7 @@ fastclient*:::rpc-start
 fastclient*:::rpc-done
 /pending[pid, arg0, arg1] != 0/
 {
-	@[pending[pid, arg0, arg1]] =
+	@[pending[pid, arg0, arg1], walltimestamp / 1000000000] =
 	    quantize((timestamp - starts[pid, arg0, arg1]) / 1000000);
 	pending[pid, arg0, arg1] = 0;
 	starts[pid, arg0, arg1] = 0;
