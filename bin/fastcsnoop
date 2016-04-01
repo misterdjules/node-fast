@@ -1,0 +1,54 @@
+#!/usr/sbin/dtrace -s
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2016, Joyent, Inc.
+ */
+
+/*
+ * fastcsnoop: dump fast client activity
+ */
+
+#pragma D option quiet
+#pragma D option zdefs
+
+BEGIN
+{
+	start = timestamp;
+	printf("%-8s  %6s  %3s  %9s\n", "TIME", "PID", "CLI", "MSGID");
+}
+
+fastclient*:::rpc-start,
+fastclient*:::rpc-data,
+fastclient*:::rpc-done
+{
+	this->d = timestamp - start;
+	printf("%4d.%03d  %6d  %3d  %9d  ",
+	    this->d / 1000000000,
+	    (this->d % 1000000000) / 1000000,
+	    pid, arg0, arg1);
+}
+
+fastclient*:::rpc-start
+{
+	printf("-> %s\n", copyinstr(arg2));
+	printf("%37s %s\n", "", copyinstr(arg3));
+	pending[pid, arg0, arg1] = copyinstr(arg2);
+}
+
+fastclient*:::rpc-data
+{
+	printf("    data: %s\n", copyinstr(arg2));
+}
+
+fastclient*:::rpc-done
+/pending[pid, arg0, arg1] != 0/
+{
+	printf("<- %s (status: %s)\n", pending[pid, arg0, arg1],
+	    copyinstr(arg2));
+	pending[pid, arg0, arg1] = 0;
+}
