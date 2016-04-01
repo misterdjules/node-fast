@@ -25,7 +25,7 @@ var mod_net = require('net');
 function main()
 {
 	var argv, doabort, host, port, rpcmethod, rpcargs;
-	var timeout = 5000;
+	var timeout = null;
 
 	mod_cmdutil.configure({
 	    'synopses': [ '[--abort-immediately] HOST PORT METHOD ARGS' ],
@@ -89,7 +89,7 @@ function fastcall(args, callback)
 	mod_assertplus.object(args, 'args');
 	mod_assertplus.string(args.host, 'args.host');
 	mod_assertplus.number(args.port, 'args.port');
-	mod_assertplus.number(args.timeout, 'args.timeout');
+	mod_assertplus.optionalNumber(args.timeout, 'args.timeout');
 	mod_assertplus.string(args.rpcmethod, 'args.rpcmethod');
 	mod_assertplus.array(args.rpcargs, 'args.rpcargs');
 	mod_assertplus.bool(args.abortImmediately, 'args.abortImmediately');
