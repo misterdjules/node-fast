@@ -30,7 +30,7 @@ fastclient*:::rpc-start
 }
 
 fastclient*:::rpc-done
-/pending[pid, arg0, arg1] != 0/
+/starts[pid, arg0, arg1] != 0/
 {
 	@[pending[pid, arg0, arg1]] =
 	    quantize((timestamp - starts[pid, arg0, arg1]) / 1000000);
