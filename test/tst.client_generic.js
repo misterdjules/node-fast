@@ -658,8 +658,17 @@ var test_cases = [ {
 
 	/*
 	 * This test case has an analog in the server test suite.  Changes here
-	 * may need to be reflected there.
+	 * may need to be reflected there.  As with the server analog, this test
+	 * case relies on pause() working even in new mode, which isn't
+	 * supported on Node 0.10.
 	 */
+	if (mod_testcommon.predatesUsefulPause()) {
+		ctc.ctc_log.warn('skipping test (not supported on v0.10)');
+		ctc.cleanup();
+		setImmediate(callback);
+		return;
+	}
+
 	mod_vasync.waterfall([
 	    function makeRequest(next) {
 		/*

@@ -53,6 +53,7 @@ exports.isFlowControlled = isFlowControlled;
 exports.registerExitBlocker = registerExitBlocker;
 exports.unregisterExitBlocker = unregisterExitBlocker;
 exports.clientMakeRpcCallback = clientMakeRpcCallback;
+exports.predatesUsefulPause = predatesUsefulPause;
 
 /*
  * Construct a plain-old-JavaScript object whose size is linear in "width" and
@@ -330,4 +331,15 @@ function clientMakeRpcCallback(fastclient, rpcargs, callback)
 		done = true;
 		callback(null, data);
 	});
+}
+
+/*
+ * Returns true if the current Node version predates a pause() function that
+ * works on all streams.  In Node v0.10, if you pause a stream that was
+ * constructed in the "new" mode, you get an error about "Cannot switch to old
+ * mode now", which makes it harder for us to exercise certain test cases.
+ */
+function predatesUsefulPause()
+{
+	return (/^v0\.10\./.test(process.version));
 }
