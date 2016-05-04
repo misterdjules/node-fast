@@ -703,12 +703,22 @@ serverTestCases = [ {
 	var ndata = 0;
 
 	/*
+	 * This test does not work on Node v0.10, but we don't claim full
+	 * support for that version.
+	 */
+	log = tctx.ts_log;
+	if (mod_testcommon.predatesUsefulPause()) {
+		log.warn('skipping test (not supported on v0.10)');
+		setImmediate(callback);
+		return;
+	}
+
+	/*
 	 * This test case has an analog in the server test suite.  Changes here
 	 * may need to be reflected there.  As described in more detail there,
 	 * the scope of flow control is limited because of the way multiple
 	 * requests are multiplexed over a single socket.
 	 */
-	log = tctx.ts_log;
 	client = tctx.firstFastClient();
 	tctx.ts_server.registerRpcMethod({
 	    'rpcmethod': 'faucet',
