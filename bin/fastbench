@@ -36,6 +36,14 @@ var fbDflConcurrency = 1;
 /* default reporting interval, in seconds */
 var fbDflReportingInterval = 5;
 
+/*
+ * The Big Theory Statement in lib/fast_server.js explains that completing N
+ * requests over a single client socket takes O(N^2) time.  To keep this
+ * manageable, fastbench attempts to maintain a fixed number of requests per
+ * connection.
+ */
+var fbDflRequestsPerConnection = 10;
+
 function fbUsageMessage()
 {
 	var msg, workloads;
@@ -159,7 +167,7 @@ function parseOptInt(option, min)
 
 function fastbench(config)
 {
-	var log, csock;
+	var log, queue, bencher, nconns, i;
 	var start = new Date();
 
 	printf('%s (%d) pid %d: running workload "%s" ',
@@ -185,28 +193,51 @@ function fastbench(config)
 	    'name': 'fastbench',
 	    'level': process.env['LOG_LEVEL'] || 'fatal'
 	});
-	csock = mod_net.createConnection(config.fbPort, config.fbHost);
 
-	csock.on('error', function (err) {
-		mod_cmdutil.fail(new VError(err, 'socket error'));
+	queue = mod_vasync.queuev({
+	    'concurrency': 10,
+	    'worker': function fastbenchInitConn(_, queuecallback) {
+		var csock;
+		csock = mod_net.createConnection(config.fbPort, config.fbHost);
+		bencher.fb_sockets.push(csock);
+
+		csock.on('error', function (err) {
+			mod_cmdutil.fail(new VError(err, 'socket error'));
+		});
+		csock.on('connect', function () {
+			var fastclient = new mod_fast.FastClient({
+			    'log': log,
+			    'transport': csock,
+			    'nRecentRequests': 5
+			});
+
+			bencher.fb_fastclients.push(fastclient);
+			fastclient.on('error', function (err) {
+				mod_cmdutil.fail(
+				    new VError(err, 'client error'));
+			});
+
+			queuecallback();
+		});
+	    }
 	});
 
-	csock.on('connect', function () {
-		printf('established connection to %s:%d\n',
-		    config.fbHost, config.fbPort);
+	bencher = new FastBench();
+	bencher.fb_config = config;
+	bencher.fb_sockets = [];
+	bencher.fb_fastclients = [];
 
-		var bencher = new FastBench();
-		bencher.fb_socket = csock;
-		bencher.fb_config = config;
-		bencher.fb_fastclient = new mod_fast.FastClient({
-		    'log': log,
-		    'transport': csock,
-		    'nRecentRequests': 100
-		});
-
-		bencher.fb_fastclient.on('error', function (err) {
-			mod_cmdutil.fail(new VError(err, 'client error'));
-		});
+	nconns = Math.ceil(config.fbConcurrency / fbDflRequestsPerConnection);
+	mod_assertplus.ok(nconns > 0);
+	for (i = 0; i < nconns; i++) {
+		queue.push(0);
+	}
+	queue.close();
+	queue.on('end', function () {
+		printf('established %d connections to %s:%d\n',
+		    bencher.fb_sockets.length, config.fbHost, config.fbPort);
+		mod_assertplus.equal(bencher.fb_sockets.length,
+		    bencher.fb_fastclients.length);
 
 		process.once('SIGINT', function onSigInt() {
 			bencher.finish();
@@ -224,9 +255,9 @@ function fastbench(config)
 
 function FastBench()
 {
-	this.fb_socket = null;
-	this.fb_fastclient = null;
-	this.fb_config = null;
+	this.fb_sockets = null;	/* list of client sockets */
+	this.fb_fastclients = null;	/* list of fast clients */
+	this.fb_config = null;		/* configuration */
 
 	this.fb_queue = null;	/* vasync queue for sending requests */
 	this.fb_start = null;	/* start hrtime */
@@ -247,10 +278,11 @@ FastBench.prototype.start = function ()
 	var ntoissue, i;
 	var self = this;
 
-	mod_assertplus.object(this.fb_socket);
-	mod_assertplus.object(this.fb_fastclient);
+	mod_assertplus.object(this.fb_sockets);
+	mod_assertplus.object(this.fb_fastclients);
 	mod_assertplus.object(this.fb_config);
 	mod_assertplus.ok(this.fb_queue === null);
+	mod_assertplus.ok(this.fb_sockets.length > 0);
 
 	this.fb_start = process.hrtime();
 	this.fb_queue = mod_vasync.queuev({
@@ -297,7 +329,9 @@ FastBench.prototype.doWork = function (_, queuecb)
 		this.fb_hiwat = concur;
 	}
 
-	client = this.fb_fastclient;
+	client = this.fb_fastclients[
+	    this.fb_nissued % this.fb_fastclients.length];
+	mod_assertplus.object(client);
 	this.fb_config.fbWorkload.nextRequest(client, function (err) {
 		if (self.fb_done !== null) {
 			queuecb();
@@ -327,8 +361,12 @@ FastBench.prototype.doWork = function (_, queuecb)
 FastBench.prototype.finish = function ()
 {
 	this.fb_done = process.hrtime();
-	this.fb_socket.destroy();
-	this.fb_fastclient.detach();
+	this.fb_sockets.forEach(function (s) {
+		s.destroy();
+	});
+	this.fb_fastclients.forEach(function (fastclient) {
+		fastclient.detach();
+	});
 
 	if (this.fb_timeout !== null) {
 		clearTimeout(this.fb_timeout);
