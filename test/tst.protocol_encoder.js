@@ -94,14 +94,14 @@ test_cases = [ {
     }
 }, {
     'name': 'bad msgid: missing',
-    'error': /msg.msgid \(number\) is required/,
+    'error': /msg.msgid is not an integer between 0 and FP_MSGID_MAX/,
     'input': {
 	'status': mod_protocol.FP_STATUS_DATA,
 	'data': []
     }
 }, {
     'name': 'bad msgid: negative',
-    'error': /msg.msgid is too small/,
+    'error': /msg.msgid is not an integer between 0 and FP_MSGID_MAX/,
     'input': {
 	'msgid': -3,
 	'status': mod_protocol.FP_STATUS_DATA,
@@ -109,7 +109,7 @@ test_cases = [ {
     }
 }, {
     'name': 'bad msgid: too large',
-    'error': /msg.msgid is too big/,
+    'error': /msg.msgid is not an integer between 0 and FP_MSGID_MAX/,
     'input': {
 	'msgid': 2147483648,
 	'status': mod_protocol.FP_STATUS_DATA,
@@ -117,7 +117,7 @@ test_cases = [ {
     }
 }, {
     'name': 'bad msgid: non-integer',
-    'error': /msg.msgid is not an integer/,
+    'error': /msg.msgid is not an integer between 0 and FP_MSGID_MAX/,
     'input': {
 	'msgid': 3.7,
 	'status': mod_protocol.FP_STATUS_DATA,
@@ -125,7 +125,7 @@ test_cases = [ {
     }
 }, {
     'name': 'bad msgid: non-numeric',
-    'error': /msg.msgid \(number\) is required/,
+    'error': /msg.msgid is not an integer between 0 and FP_MSGID_MAX/,
     'input': {
 	'msgid': {},
 	'status': mod_protocol.FP_STATUS_DATA,
