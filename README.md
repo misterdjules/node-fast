@@ -69,6 +69,27 @@ implementation.  Since changing the CRC algorithm would require a flag day among
 deployed components, this module continues to use the buggy CRC implementation.
 
 
+## Observability
+
+The fast server provides functions suitable for use with
+[kang](https://github.com/davepacheco/kang), a small library for exposing
+debugging information over an HTTP API.  The built-in kang server reports:
+
+* server-wide statistics about connections created, requests started,
+  requests completed, and requests failed;
+* per-connection state information (including time accepted and errors seen) and
+  statistics about requests started, completed, and failed; and
+* per-request state information (including time started)
+
+These enable basic monitoring of server activity and health.  The connection and
+request state information allows you to see which clients are connected, how
+long they've been connected, and how long individual requests have been running,
+which is often helpful in identifying leaked or hung requests.
+
+The Fast server only provides functions; you have to hook this up to a kang
+server.  The built-in demo server demonstrates how to do that.
+
+
 ## Client API
 
 Consumers of the client API are responsible for maintaining persistent

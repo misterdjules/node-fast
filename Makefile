@@ -23,7 +23,7 @@ BASH_FILES	 = $(wildcard test/*.sh)
 JS_FILES	:= bin/fastbench \
 		   bin/fastcall \
 		   bin/fastserve \
-		   $(shell find lib examples test -name '*.js' | \
+		   $(shell find lib test -name '*.js' | \
 			grep -v ^test/compat/node_modules)
 CATEST_FILES	 = $(shell find test -name 'tst.*.js' | \
 			grep -v ^test/compat/node_modules)

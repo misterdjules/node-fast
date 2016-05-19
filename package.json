@@ -20,6 +20,9 @@
 		"vasync": "^1.6.3",
 		"verror": "git+ssh://git@github.com:davepacheco/node-verror#dev-issue-10"
 	},
+	"devDependencies": {
+		"kang": "1.0.1"
+	},
 	"optionalDependencies": {
 	    "dtrace-provider": "^0.6.0"
 	},

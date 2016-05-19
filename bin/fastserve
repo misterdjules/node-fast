@@ -19,7 +19,11 @@ var mod_bunyan = require('bunyan');
 var mod_cmdutil = require('cmdutil');
 var mod_fastdemo = require('../lib/demo_server');
 var mod_fastserver = require('../lib/fast_server');
+var mod_kang = require('kang');
 var mod_net = require('net');
+var mod_os = require('os');
+
+var KANG_PORT = 16519;
 
 var usageMessage = [
     'Start a Fast protocol server supporting a few basic RPC calls.  PORT is ',
@@ -46,15 +50,20 @@ function main()
 		mod_cmdutil.usage('invalid TCP port: %s\n', argv[1]);
 	}
 
-	fastDemoServer({ 'port': port });
+	fastDemoServer({
+	    'fastPort': port,
+	    'kangPort': KANG_PORT
+	});
 }
 
 function fastDemoServer(args)
 {
-	var port, log, sock, fastserver;
+	var fastPort, log, sock, fastserver;
+	var kangPort, kangserver;
 
 	mod_assertplus.object(args, 'args');
-	mod_assertplus.number(args.port, 'args.port');
+	mod_assertplus.number(args.fastPort, 'args.fastPort');
+	mod_assertplus.number(args.kangPort, 'args.kangPort');
 
 	log = new mod_bunyan({
 	    'name': 'fastserve',
@@ -72,19 +81,44 @@ function fastDemoServer(args)
 		fastserver.registerRpcMethod(r);
 	});
 
-	port = args.port;
-	sock.listen(port, function () {
+	fastPort = args.fastPort;
+	kangPort = args.kangPort;
+	sock.listen(fastPort, function () {
 		var nsigs = 0;
 
-		log.info({ 'port': port }, 'listening');
+		log.info({ 'fastPort': fastPort },
+		    'listening for fast requests');
+
+		mod_kang.knStartServer({
+		    'port': kangPort,
+		    'uri_base': '/kang',
+		    'service_name': 'fastserve',
+		    'version': '1.0.0',
+		    'ident': mod_os.hostname() + '/' +  process.pid,
+		    'list_types': fastserver.kangListTypes.bind(fastserver),
+		    'list_objects': fastserver.kangListObjects.bind(fastserver),
+		    'get': fastserver.kangGetObject.bind(fastserver),
+		    'stats': fastserver.kangStats.bind(fastserver)
+		}, function (err, server) {
+			mod_assertplus.ok(!err);
+			kangserver = server;
+			log.info({ 'kangPort': kangPort },
+			    'listening for kang requests');
+			if (nsigs > 0) {
+				kangserver.close();
+			}
+		});
 
 		process.on('SIGINT', function () {
 			if (++nsigs == 1) {
+				if (kangserver)
+					kangserver.close();
 				sock.close();
 				fastserver.close();
 			}
 		});
 	});
+
 }
 
 main();
