@@ -21,7 +21,10 @@ var mod_cmdutil = require('cmdutil');
 var mod_extsprintf = require('extsprintf');
 var mod_getopt = require('posix-getopt');
 var mod_jsprim = require('jsprim');
+var mod_kang = require('kang');
 var mod_net = require('net');
+var mod_os = require('os');
+var mod_strsplit = require('strsplit');
 var mod_vasync = require('vasync');
 
 var printf = mod_extsprintf.printf;
@@ -35,6 +38,8 @@ var mod_fastbench = require('../lib/bench');
 var fbDflConcurrency = 1;
 /* default reporting interval, in seconds */
 var fbDflReportingInterval = 5;
+/* default port for kang server */
+var fbDflKangPort = 16520;
 
 /*
  * The Big Theory Statement in lib/fast_server.js explains that completing N
@@ -84,7 +89,8 @@ function main()
 	    'fbNRequests': null,
 	    'fbDuration': null,
 	    'fbReportingInterval': fbDflReportingInterval * 1000,
-	    'fbConcurrency': fbDflConcurrency
+	    'fbConcurrency': fbDflConcurrency,
+	    'fbKangPort': fbDflKangPort
 	};
 
 	mod_cmdutil.configure({
@@ -239,17 +245,34 @@ function fastbench(config)
 		mod_assertplus.equal(bencher.fb_sockets.length,
 		    bencher.fb_fastclients.length);
 
-		process.once('SIGINT', function onSigInt() {
-			bencher.finish();
-		});
+		mod_kang.knStartServer({
+		    'port': config.fbKangPort,
+		    'uri_base': '/kang',
+		    'service_name': 'fastbench',
+		    'version': '1.0.0',
+		    'ident': mod_os.hostname() + '/' + process.pid,
+		    'list_types': bencher.kangListTypes.bind(bencher),
+		    'list_objects': bencher.kangListObjects.bind(bencher),
+		    'get': bencher.kangGetObject.bind(bencher),
+		    'stats': bencher.kangStats.bind(bencher)
+		}, function (err, server) {
+			mod_assertplus.ok(!err);
+			bencher.fb_kangserver = server;
+			log.info({ 'kangPort': config.fbKangPort },
+			    'listening for kang requests');
 
-		if (config.fbDuration !== null) {
-			setTimeout(function onCommandTimeout() {
+			if (config.fbDuration !== null) {
+				setTimeout(function onCommandTimeout() {
+					bencher.finish();
+				}, config.fbDuration);
+			}
+
+			process.once('SIGINT', function onSigInt() {
 				bencher.finish();
-			}, config.fbDuration);
-		}
+			});
 
-		bencher.start();
+			bencher.start();
+		});
 	});
 }
 
@@ -267,6 +290,7 @@ function FastBench()
 	this.fb_nerrors = 0;	/* unexpected errors */
 	this.fb_hiwat = 0;	/* maximum observed concurrency */
 	this.fb_timeout = null;	/* reporting timeout */
+	this.fb_kangserver = null;	/* kang server */
 
 	/* last reported stats */
 	this.fb_reported_ncompleted = 0;
@@ -372,6 +396,7 @@ FastBench.prototype.finish = function ()
 		clearTimeout(this.fb_timeout);
 	}
 
+	this.fb_kangserver.close();
 	this.printResults();
 };
 
@@ -417,6 +442,51 @@ FastBench.prototype.printResults = function ()
 	 */
 	printf('estimated average latency: %d us\n',
 	    durationus / (this.fb_ncompleted / this.fb_hiwat));
+};
+
+FastBench.prototype.kangStats = function ()
+{
+	return ({
+	    'nRpcStarted': this.fb_nissued,
+	    'nRpcDone': this.fb_ncompleted,
+	    'nErrors': this.fb_nerrors,
+	    'maxObservedConcurrency': this.fb_hiwat
+	});
+};
+
+FastBench.prototype.kangListTypes = function ()
+{
+	if (this.fb_start === null) {
+		return ([]);
+	}
+
+	return (this.fb_fastclients[0].kangListTypes());
+};
+
+FastBench.prototype.kangListObjects = function (type)
+{
+	/*
+	 * It would be much better if Kang had a better way to aggregate up
+	 * hierarchies of objects.  This is pretty cheesy.
+	 */
+	var rv = [];
+
+	this.fb_fastclients.forEach(function (fastclient, i) {
+		var objs = fastclient.kangListObjects(type);
+		objs.forEach(function (key) { rv.push(i + '/' + key); });
+	});
+
+	return (rv);
+};
+
+FastBench.prototype.kangGetObject = function (type, id)
+{
+	var parts, client;
+
+	parts = mod_strsplit(id, '/', 2);
+	mod_assertplus.equal(parts.length, 2);
+	client = this.fb_fastclients[parts[0]];
+	return (client.kangGetObject(type, parts[1]));
 };
 
 main();
