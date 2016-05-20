@@ -23,6 +23,7 @@
 
 var mod_assertplus = require('assert-plus');
 var mod_bunyan = require('bunyan');
+var mod_microtime = require('microtime');
 var mod_net = require('net');
 var mod_path = require('path');
 var mod_vasync = require('vasync');
@@ -34,6 +35,7 @@ var mod_testclient = require('./common/client');
 var mod_testcommon = require('./common');
 
 var testLog;
+var startUts;
 var serverSocket;
 var serverPort = mod_testcommon.serverPort;
 var serverIp = mod_testcommon.serverIp;
@@ -44,6 +46,8 @@ function main()
 	    'name': mod_path.basename(__filename),
 	    'level': process.env['LOG_LEVEL'] || 'fatal'
 	});
+
+	startUts = mod_microtime.now();
 
 	mod_testcommon.registerExitBlocker('test run');
 	mod_testcommon.mockServerSetup(function (s) {
@@ -443,6 +447,8 @@ function assertNormalRequest(message)
 	mod_assertplus.object(message.data);
 	mod_assertplus.object(message.data.m);
 	mod_assertplus.string(message.data.m.name);
+	mod_assertplus.ok(message.data.m.uts >= startUts);
+	mod_assertplus.ok(message.data.m.uts <= mod_microtime.now());
 	mod_assertplus.array(message.data.d);
 }
 
