@@ -18,6 +18,7 @@
 var mod_assertplus = require('assert-plus');
 var mod_child = require('child_process');
 var mod_cmdutil = require('cmdutil');
+var mod_forkexec = require('forkexec');
 var mod_fs = require('fs');
 var mod_vasync = require('vasync');
 
@@ -68,11 +69,9 @@ function main()
 	     function installOldModule(next) {
 		process.stderr.write('installing legacy fast version ' +
 		    pkgtoinstall + ' ... ');
-		mod_child.execFile(npmbin, [ 'install', pkgtoinstall ],
-		    function (err, stdout, stderr) {
-			err = mod_compat.makeExecError(
-			    npmbin + ' install ' + pkgtoinstall,
-			    err, stdout, stderr);
+		mod_forkexec.forkExecWait({
+		    'argv': [ npmbin, 'install', pkgtoinstall ]
+		}, function (err, info) {
 			if (err) {
 				process.stderr.write('FAIL\n');
 				next(err);
