@@ -355,8 +355,7 @@ same message identifier as the one in the client's original `DATA` message that
 initiated the RPC call.
 
 By convention, the `m` fields (`m.name` and `m.uts`) are populated for all
-server messages with the name of the RPC method being invoked, even though
-`m.name` is redundant.
+server messages, even though `m.name` is redundant.
 
 The RPC request begins when the client sends the initial `DATA` message.  The
 RPC request is finished when the server sends either an `ERROR` or `END` message
