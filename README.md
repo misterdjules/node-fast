@@ -54,7 +54,9 @@ For an example client and server, see the [fastcall](bin/fastcall) and
 
 The Fast protocol is intended for internal systems.  It does not support
 authentication.  Neither the client nor server implementations are hardened
-against byzantine behavior (e.g., denial-of-service attacks).
+against byzantine behavior (e.g., denial-of-service attacks), though they are
+expected to correctly handle all network-related failure modes and byzantine
+input.
 
 Previous implementations of the Fast protocol supported cancellation, but it was
 dangerous to use with servers that did not support it, and there was no way to
@@ -271,7 +273,7 @@ conventions for that (i.e., using `pipe()` or checking the return value of
 `write()`).  When the request has completed, the handler should end the stream
 with its `end()` method.
 
-The handler should report failure by invoking `rpc.fail(err)`, where `err is an
+The handler should report failure by invoking `rpc.fail(err)`, where `err` is an
 error describing the failure.  The handler should not emit data or end the
 request gracefully after reporting an error.
 
