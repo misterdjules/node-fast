@@ -21,6 +21,7 @@
 
 var mod_assertplus = require('assert-plus');
 var mod_child = require('child_process');
+var mod_forkexec = require('forkexec');
 var mod_fs = require('fs');
 var mod_net = require('net');
 var mod_path = require('path');
@@ -30,7 +31,6 @@ var VError = require('verror');
 exports.nodeConfigLoad = nodeConfigLoad;
 exports.setupOldServer = setupOldServer;
 exports.teardownOldServer = teardownOldServer;
-exports.makeExecError = makeExecError;
 
 /*
  * Uses the FAST_COMPAT_NODEDIR environment variable to construct paths to the
@@ -55,16 +55,17 @@ function nodeConfigLoad(callback)
 	npmbin = mod_path.join(nodedir, 'bin', 'npm');
 
 	process.stderr.write('checking node version ... ');
-	mod_child.execFile(nodebin, [ '-v' ], function (err, stdout, stderr) {
-		err = makeExecError(nodebin + ' -v', err, stdout, stderr);
+	mod_forkexec.forkExecWait({
+	    'argv': [ nodebin, '-v' ]
+	}, function (err, info) {
 		if (err) {
 			process.stderr.write('FAIL\n');
 			callback(err);
 			return;
 		}
 
-		process.stderr.write(stdout);
-		if (!/^v0\.10\./.test(stdout)) {
+		process.stderr.write(info.stdout);
+		if (!/^v0\.10\./.test(info.stdout)) {
 			callback(new VError('$FAST_COMPAT_NODEDIR/bin/' +
 			    'node does not appear to be v0.10'));
 		} else {
@@ -163,46 +164,4 @@ function teardownOldServer(child, callback)
 		callback();
 	});
 	child.kill('SIGKILL');
-}
-
-/* XXX abstract out of node-forkexec.  This code is copied from there. */
-function makeExecError(cmd, error, stdout, stderr)
-{
-	if (error === null)
-		return (null);
-
-	/*
-	 * child_process.execFile() is documented to return either null
-	 * or an instance of Error.
-	 */
-	mod_assertplus.ok(error instanceof Error,
-	    'child_process.execFile() returned non-null, non-Error');
-	if (error.signal) {
-		/*
-		 * We deliberately don't pass "error" to the VError
-		 * constructor because the "message" on Node's error is
-		 * non-idiomatic for Unix programs.
-		 */
-		return (new VError('"%s": unexpectedly terminated by signal %s',
-		    cmd, error.signal));
-	}
-
-	if (typeof (error.code) == 'number') {
-		/* See above. */
-		return (new VError('"%s": exited with status %d',
-		    cmd, error.code));
-	}
-
-	/*
-	 * In this case, fork() or exec() probably failed.  Neither "signal" nor
-	 * "status" will be provided to the caller since no child process was
-	 * created.  In this case, we use the underlying error as a cause
-	 * because it may well be meaningful.
-	 *
-	 * Note that this kind of error can have a "code" on it, but it's not
-	 * the status code of the program.  Node uses "code" on other kinds of
-	 * errors.  That's why the previous condition checks whether "code" is a
-	 * number, not just whether it's present.
-	 */
-	return (error);
 }
