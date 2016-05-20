@@ -71,9 +71,13 @@ deployed components, this module continues to use the buggy CRC implementation.
 
 ## Observability
 
-The fast server provides functions suitable for use with
+### Kang server
+
+The fast client and server provide functions suitable for use with
 [kang](https://github.com/davepacheco/kang), a small library for exposing
-debugging information over an HTTP API.  The built-in kang server reports:
+debugging information over an HTTP API.
+
+The server-side kang functions report:
 
 * server-wide statistics about connections created, requests started,
   requests completed, and requests failed;
@@ -86,8 +90,36 @@ request state information allows you to see which clients are connected, how
 long they've been connected, and how long individual requests have been running,
 which is often helpful in identifying leaked or hung requests.
 
-The Fast server only provides functions; you have to hook this up to a kang
-server.  The built-in demo server demonstrates how to do that.
+The client-side kang functions report per-client and per-request state and
+statistics.
+
+The client and server only provide functions; you have to hook this up to a kang
+server.  The built-in demo server ("fastserve") and benchmarking tool
+("fastbench") demonstrate how to do that.
+
+### DTrace probes
+
+The Fast client provides DTrace probes:
+
+Probe name  | Event                                            | Arg0                    | Arg1                     | Arg2                     | Arg3
+----------- | ------------------------------------------------ |-- --------------------- | ------------------------ | ------------------------ | ----
+`rpc-start` | Client begins issuing an RPC call                | (int) Client identifier | (int) Message identifier | (string) RPC method name | (json) object with "rpcargs" and optional "timeout".
+`rpc-data`  | Client receives 'data' event for outstanding RPC | (int) Client identifier | (int) Message identifier | (json) Received data     | &em;
+`rpc-done`  | Client finishes processing RPC                   | (int) Client identifier | (int) Message identifier | (json) May contain "error" describing any error that occurred. | &em;
+
+and several scripts in the `bin` directory that use these probes:
+
+* fastclatency: trace latency of all client RPC requests.  Prints power-of-two
+  histogram of request latency when the script exits.
+* fastcsnoop: dump out client RPC activity (all "start", "data", and "done"
+  events).
+
+These scripts, the probes, and their arguments may change over time.
+
+Note that the client identifier is only unique within a process, and the
+message identifier is only unique for a given client.  Both are only unique
+over a given period of time (i.e., client ids and message ids may be reused).
+See the sample scripts for how to use these correctly.
 
 
 ## Client API
