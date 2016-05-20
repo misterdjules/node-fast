@@ -178,6 +178,7 @@ any outstanding requests.
 Public methods:
 
 * `rpc(args)`: initiate an RPC request
+* `rpcBufferAndCallback(args)`: initiate an RPC request and buffer incoming data
 * `request.abort()`: abort an RPC request
 * `detach()`: detach client from underlying socket
 
@@ -206,6 +207,41 @@ abort requests that fail due to a socket error.
 
 As with other Node streams, the request stream will emit exactly one `end` or
 `error` event, after which no other events will be emitted.
+
+
+#### rpcBufferAndCallback(args, callback): initiate an RPC request and buffer response
+
+This is a convenience function for making RPC calls when the server is expected
+to return a bounded number of objects and the client doesn't intend to process
+the results in a streaming way.  This function buffers up to
+`maxObjectsToBuffer` objects and invokes `callback` when the request is
+complete, as:
+
+    callback(err, data, ndata)
+
+where:
+
+* `err` is the error emitted by the request
+* `data` is an array of buffered data objects, which will have at most
+  `maxObjectsToBuffer` elements
+* `ndata` is a non-negative integer describing the total number of data objects
+  received.  This may be larger than `data.length` only if some objects were
+  dropped because `maxObjectsToBuffer` objects had already been buffered.
+
+Note that `data` and `ndata` will always be present and valid, even if `err` is
+non-null, since some number of data objects may have been received before the
+request error.
+
+Named arguments:
+
+Name                 | Type                 | Meaning
+-------------------- | -------------------- | -------
+`rpcmethod`          | string               | see arguments to `rpc()`
+`rpcargs`            | array                | see arguments to `rpc()`
+`timeout`            | integer              | see arguments to `rpc()`
+`log`                | object               | see arguments to `rpc()`
+`maxObjectsToBuffer` | non-negative integer | maximum number of received data objects that may be buffered.  Subsequently received objects will be dropped.  Callers can tell whether this happened by looking at the `ndata` argument to the callback.
+
 
 #### request.abort(): abort an RPC request
 

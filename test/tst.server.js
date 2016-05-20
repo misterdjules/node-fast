@@ -266,9 +266,11 @@ function runConnFailureTest(tctx, injectFail, checkError, callback)
 		 * Kick off the requests from the clients.
 		 */
 		[ 0, 1, 2 ].forEach(function (i) {
-			mod_testcommon.clientMakeRpcCallback(client1,
-			    { 'rpcmethod': 'block', 'rpcargs': [] },
-			    function (err, data) {
+			client1.rpcBufferAndCallback({
+			    'maxObjectsToBuffer': 0,
+			    'rpcmethod': 'block',
+			    'rpcargs': []
+			}, function (err, data, ndata) {
 				/*
 				 * Note that this callback will not be invoked
 				 * until several stages later in the pipeline.
@@ -277,21 +279,24 @@ function runConnFailureTest(tctx, injectFail, checkError, callback)
 				    'FastRequestError');
 				checkError(err.cause());
 				rsbarrier.done('response 1/' + i);
-			    });
+			});
 		});
 
-		mod_testcommon.clientMakeRpcCallback(client2,
-		    { 'rpcmethod': 'block', 'rpcargs': [] },
-		    function (err, data) {
+		client2.rpcBufferAndCallback({
+		    'maxObjectsToBuffer': 1,
+		    'rpcmethod': 'block',
+		    'rpcargs': []
+		}, function (err, data, ndata) {
 			/*
 			 * Like above, this won't be invoked until a few stages
 			 * later in this pipeline, by which point a later stage
 			 * will have set client2cb.
 			 */
 			mod_assertplus.ok(!err);
+			mod_assertplus.equal(data.length, ndata);
 			mod_assertplus.deepEqual(data, [ { 'value': 52 } ]);
 			client2cb();
-		    });
+		});
 	    },
 
 	    function injectError(_, next) {
@@ -342,10 +347,12 @@ function runConnFailureTest(tctx, injectFail, checkError, callback)
 serverTestCases = [ {
     'name': 'basic RPC: no data',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(),  {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 0,
 	    'rpcmethod': 'echo',
 	    'rpcargs': []
-	}, function (err, data) {
+	}, function (err, data, ndata) {
+		mod_assertplus.equal(data.length, ndata);
 		err = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': null,
@@ -360,10 +367,12 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: 1 data item',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 1,
 	    'rpcmethod': 'echo',
 	    'rpcargs': [ 'lafayette' ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
+		mod_assertplus.equal(data.length, ndata);
 		err = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': null,
@@ -378,7 +387,8 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: several data items',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 4,
 	    'rpcmethod': 'echo',
 	    'rpcargs': [
 	        { 'matches': [ 'tactical', 'brilliance' ] },
@@ -386,7 +396,8 @@ serverTestCases = [ {
 		false,
 		17.81
 	    ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
+		mod_assertplus.equal(data.length, ndata);
 		err = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': null,
@@ -407,7 +418,8 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: 0 data items, plus error',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 0,
 	    'rpcmethod': 'fail',
 	    'rpcargs': [ {
 		'name': 'MyStupidError',
@@ -420,9 +432,10 @@ serverTestCases = [ {
 		    'legacyContextProperty': 'oops'
 		}
 	    } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		var rpcerr, info;
 
+		mod_assertplus.equal(data.length, ndata);
 		rpcerr = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': true,
@@ -450,7 +463,8 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC: several data items, plus error',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 3,
 	    'rpcmethod': 'fail',
 	    'rpcargs': [ {
 		'data': [ 'one', 'two', 'three' ],
@@ -464,9 +478,10 @@ serverTestCases = [ {
 		    'legacyContextProperty': 'oops'
 		}
 	    } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		var rpcerr, info;
 
+		mod_assertplus.equal(data.length, ndata);
 		rpcerr = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': true,
@@ -506,12 +521,14 @@ serverTestCases = [ {
 }, {
     'name': 'RPC for non-existent method',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(), {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 0,
 	    'rpcmethod': 'badmethod',
 	    'rpcargs': []
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		var rpcerr, info;
 
+		mod_assertplus.equal(data.length, ndata);
 		rpcerr = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': true,
@@ -569,8 +586,8 @@ serverTestCases = [ {
 	        { 'rpcmethod': 'recordAndReturn', 'rpcargs': [] }
 	    ],
 	    'func': function makeRpc(rpcargs, next) {
-		mod_testcommon.clientMakeRpcCallback(
-		    tctx.firstFastClient(), rpcargs, next);
+		rpcargs.maxObjectsToBuffer = 2;
+		tctx.firstFastClient().rpcBufferAndCallback(rpcargs, next);
 	    }
 	}, function (err, results) {
 		if (err) {
@@ -642,10 +659,12 @@ serverTestCases = [ {
 }, {
     'name': 'basic RPC with immediate end-of-stream',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(),  {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 0,
 	    'rpcmethod': 'sleep',
 	    'rpcargs': [ { 'ms': 100 } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
+		mod_assertplus.equal(data.length, ndata);
 		err = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': null,
@@ -662,13 +681,14 @@ serverTestCases = [ {
 }, {
     'name': 'RPC with large amount of data',
     'run': function (tctx, callback) {
-	mod_testcommon.clientMakeRpcCallback(tctx.firstFastClient(),  {
+	tctx.firstFastClient().rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 50000,
 	    'rpcmethod': 'yes',
 	    'rpcargs': [ {
 	        'count': 50000,
 		'value': 'undefined will not be used as a variable name'
 	    } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		/*
 		 * It's only with great restraint that this variable was not
 		 * itself named "undefined".
@@ -683,6 +703,7 @@ serverTestCases = [ {
 			});
 		}
 
+		mod_assertplus.equal(data.length, ndata);
 		err = expectRpcResult({
 		    'errorActual': err,
 		    'errorExpected': null,
