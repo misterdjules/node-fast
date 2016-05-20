@@ -93,14 +93,15 @@ function runTestCase(testcase, callback)
 testcases = [ {
     'name': 'basic RPC, no data',
     'run': function (log, fastclient, callback) {
-	mod_testcommon.clientMakeRpcCallback(fastclient, {
+	fastclient.rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 0,
 	    'rpcmethod': 'echo',
 	    'rpcargs': [ {
 		'values': [],
 		'errorResult': false
 	    } ]
-	}, function (err, data) {
-		if (!err && data.length !== 0) {
+	}, function (err, data, ndata) {
+		if (!err && ndata !== 0) {
 			err = new VError('expected 0 data items');
 		}
 
@@ -111,7 +112,8 @@ testcases = [ {
 }, {
     'name': 'basic RPC, some data',
     'run': function (log, fastclient, callback) {
-	mod_testcommon.clientMakeRpcCallback(fastclient, {
+	fastclient.rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 6,
 	    'rpcmethod': 'echo',
 	    'rpcargs': [ {
 		/*
@@ -121,12 +123,13 @@ testcases = [ {
 		'values': [ 'one', 'two', false, true, 7, { 'foo': 'bar' } ],
 		'errorResult': false
 	    } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		if (err) {
 			callback(err);
 			return;
 		}
 
+		mod_assertplus.equal(data.length, ndata);
 		mod_assertplus.deepEqual(data,
 		    [ 'one', 'two', false, true, 7, { 'foo': 'bar' }  ]);
 		callback();
@@ -136,19 +139,21 @@ testcases = [ {
 }, {
     'name': 'failed RPC, no data',
     'run': function (log, fastclient, callback) {
-	mod_testcommon.clientMakeRpcCallback(fastclient, {
+	fastclient.rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 0,
 	    'rpcmethod': 'echo',
 	    'rpcargs': [ {
 		'values': [],
 		'errorResult': true
 	    } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		if (!err) {
 			callback(new Error('expected error'));
 			return;
 		}
 
 		mod_assertplus.equal(data.length, 0);
+		mod_assertplus.equal(data.length, ndata);
 		mod_assertplus.equal(err.name, 'FastRequestError');
 		err = VError.cause(err);
 		mod_assertplus.equal(err.name, 'FastServerError');
@@ -163,18 +168,20 @@ testcases = [ {
 }, {
     'name': 'failed RPC, some data',
     'run': function (log, fastclient, callback) {
-	mod_testcommon.clientMakeRpcCallback(fastclient, {
+	fastclient.rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 3,
 	    'rpcmethod': 'echo',
 	    'rpcargs': [ {
 		'values': [ 5, true, 'bob' ],
 		'errorResult': true
 	    } ]
-	}, function (err, data) {
+	}, function (err, data, ndata) {
 		if (!err) {
 			callback(new Error('expected error'));
 			return;
 		}
 
+		mod_assertplus.equal(data.length, ndata);
 		mod_assertplus.deepEqual(data, [ 5, true, 'bob' ]);
 		mod_assertplus.equal(err.name, 'FastRequestError');
 		err = VError.cause(err);
