@@ -1,0 +1,68 @@
+#!/usr/sbin/dtrace -s
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2016, Joyent, Inc.
+ */
+
+/*
+ * fastssnoop: dump fast server activity
+ */
+
+#pragma D option quiet
+#pragma D option zdefs
+
+BEGIN
+{
+	start = timestamp;
+	printf("%-8s  %6s  %6s\n", "TIME", "PID", "SRV/CLI");
+}
+
+fastserver*:::conn-create,
+fastserver*:::conn-destroy,
+fastserver*:::rpc-start,
+fastserver*:::rpc-done
+{
+	this->d = timestamp - start;
+	printf("%4d.%03d  %6d  %d/%04d  ",
+	    this->d / 1000000000, (this->d % 1000000000) / 1000000,
+	    pid, arg0, arg1);
+}
+
+fastserver*:::conn-create
+{	
+	printf("connection created for %s\n", copyinstr(arg2));
+}
+
+fastserver*:::conn-destroy
+{
+	printf("connection destroyed\n");
+}
+
+fastserver*:::rpc-start
+{
+	rpcstarts[pid, arg0, arg1, arg2] = timestamp;
+	rpcmethods[pid, arg0, arg1, arg2] = copyinstr(arg3);
+	printf("rpc start: %03d (\"%s\")\n", arg2,
+	    rpcmethods[pid, arg0, arg1, arg2]);
+}
+
+fastserver*:::rpc-done
+/rpcstarts[pid, arg0, arg1, arg2] == 0/
+{
+	printf("rpc  done: %03d\n", arg2);
+}
+
+fastserver*:::rpc-done
+/rpcstarts[pid, arg0, arg1, arg2] != 0/
+{
+	printf("rpc  done: %03d (\"%s\" call took %d us)\n",
+	    arg2, rpcmethods[pid, arg0, arg1, arg2],
+	    (timestamp - rpcstarts[pid, arg0, arg1, arg2]) / 1000);
+	rpcstarts[pid, arg0, arg1, arg2] = 0;
+	rpcmethods[pid, arg0, arg1, arg2] = 0;
+}

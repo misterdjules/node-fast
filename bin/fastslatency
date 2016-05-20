@@ -10,7 +10,7 @@
  */
 
 /*
- * fastclatency: dump fast client request latency information
+ * fastslatency: dump fast server request latency information
  */
 
 #pragma D option aggsortkey
@@ -24,17 +24,17 @@ BEGIN
         printf("CTRL-C to stop and print results.\n");
 }
 
-fastclient*:::rpc-start
+fastserver*:::rpc-start
 {
-	pending[pid, arg0, arg1] = copyinstr(arg2);
-	starts[pid, arg0, arg1] = timestamp;
+	pending[pid, arg0, arg1, arg2] = copyinstr(arg3);
+	starts[pid, arg0, arg1, arg2] = timestamp;
 }
 
-fastclient*:::rpc-done
-/starts[pid, arg0, arg1] != 0/
+fastserver*:::rpc-done
+/starts[pid, arg0, arg1, arg2] != 0/
 {
-	@[pending[pid, arg0, arg1]] =
-	    quantize((timestamp - starts[pid, arg0, arg1]) / 1000);
-	pending[pid, arg0, arg1] = 0;
-	starts[pid, arg0, arg1] = 0;
+	@[pending[pid, arg0, arg1, arg2]] =
+	    quantize((timestamp - starts[pid, arg0, arg1, arg2]) / 1000);
+	pending[pid, arg0, arg1, arg2] = 0;
+	starts[pid, arg0, arg1, arg2] = 0;
 }

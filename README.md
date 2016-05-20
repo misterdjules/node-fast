@@ -73,7 +73,7 @@ deployed components, this module continues to use the buggy CRC implementation.
 
 ### Kang server
 
-The fast client and server provide functions suitable for use with
+The Fast client and server provide functions suitable for use with
 [kang](https://github.com/davepacheco/kang), a small library for exposing
 debugging information over an HTTP API.
 
@@ -99,27 +99,52 @@ server.  The built-in demo server ("fastserve") and benchmarking tool
 
 ### DTrace probes
 
-The Fast client provides DTrace probes:
+The Fast client and server provide DTrace probes and scripts in the "bin"
+directory that use these probes to show client and server activity.  **These
+scripts, the probes, and their arguments may change over time.**
+
+**Fast client probes:**
 
 Probe name  | Event                                            | Arg0                    | Arg1                     | Arg2                     | Arg3
------------ | ------------------------------------------------ |-- --------------------- | ------------------------ | ------------------------ | ----
+----------- | ------------------------------------------------ | ----------------------- | ------------------------ | ------------------------ | ----
 `rpc-start` | Client begins issuing an RPC call                | (int) Client identifier | (int) Message identifier | (string) RPC method name | (json) object with "rpcargs" and optional "timeout".
-`rpc-data`  | Client receives 'data' event for outstanding RPC | (int) Client identifier | (int) Message identifier | (json) Received data     | &em;
-`rpc-done`  | Client finishes processing RPC                   | (int) Client identifier | (int) Message identifier | (json) May contain "error" describing any error that occurred. | &em;
+`rpc-data`  | Client receives 'data' event for outstanding RPC | (int) Client identifier | (int) Message identifier | (json) Received data     | -
+`rpc-done`  | Client finishes processing RPC                   | (int) Client identifier | (int) Message identifier | (json) May contain "error" describing any error that occurred. | -
 
-and several scripts in the `bin` directory that use these probes:
+**Fast client scripts in "bin" directory:**
 
 * fastclatency: trace latency of all client RPC requests.  Prints power-of-two
   histogram of request latency when the script exits.
 * fastcsnoop: dump out client RPC activity (all "start", "data", and "done"
   events).
 
-These scripts, the probes, and their arguments may change over time.
-
 Note that the client identifier is only unique within a process, and the
 message identifier is only unique for a given client.  Both are only unique
 over a given period of time (i.e., client ids and message ids may be reused).
 See the sample scripts for how to use these correctly.
+
+**Fast server probes:**
+
+Probe name     | Event                                            | Arg0                    | Arg1                     | Arg2                     | Arg3
+-------------- | ------------------------------------------------ | ----------------------- | ------------------------ | ------------------------ | ----
+`conn-create`  | Client connection created                        | (int) server identifier | (int) client identifier  | (string) client label    | -
+`conn-destroy` | Client connection destroyed                      | (int) server identifier | (int) client identifier  | -                        | -
+`rpc-start`    | Server starts processing an RPC call             | (int) server identifier | (int) client identifier  | (int) request identifier | (string) RPC method name
+`rpc-done`     | Server finishes processing an RPC call           | (int) server identifier | (int) client identifier  | (int) request identifier | -
+
+**Fast server script in "bin" directory:**
+
+* fastssnoop: dump out server RPC activity (client connection create/destroy and
+  rpc start/done).
+
+Similar to the client, the server identifier is only unique within the process,
+and the request identifier is only unique within the client.  See the sample
+scripts for how to use these correctly.
+
+The client and server also use bunyan for logging.  On systems with DTrace
+support, you can use runtime log snooping (`bunyan -p`) to observe what the
+client and server would be logging at the finest-grained log levels, even if you
+haven't enabled those.
 
 
 ## Client API
