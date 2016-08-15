@@ -20,7 +20,7 @@
 		"posix-getopt": "1.2.0",
 		"strsplit": "^1.0.0",
 		"vasync": "^1.6.3",
-		"verror": "git+ssh://git@github.com:davepacheco/node-verror#dev-issue-10"
+		"verror": "^1.7.0"
 	},
 	"devDependencies": {
 		"forkexec": "^1.0.0"
