@@ -83,9 +83,10 @@ function makeBigObject(width, depth)
 
 /*
  * Writes into "buf" (a Node buffer) at offset "msgoffset" a Fast packet with
- * message id "msgid", status byte "status", encoded data "dataenc".  This is
- * used to generate *invalid* messages for testing purposes.  If you want to
- * generate valid Fast messages, see the MessageEncoder class.
+ * message id "msgid", status byte "status", encoded data "dataenc".  This
+ * low-level primitive is provided for the test suite to generate various types
+ * of invalid messages.  If you want to generate valid Fast messages, see the
+ * MessageEncoder class.
  */
 function writeMessageForEncodedData(buf, msgid, status, dataenc, msgoffset)
 {

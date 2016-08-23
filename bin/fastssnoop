@@ -34,7 +34,7 @@ fastserver*:::rpc-done
 }
 
 fastserver*:::conn-create
-{	
+{
 	printf("connection created for %s\n", copyinstr(arg2));
 }
 

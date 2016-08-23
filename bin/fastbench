@@ -65,13 +65,13 @@ function fbUsageMessage()
 	    'Options:',
 	    '',
 	    '    -c | --concurrency N         Allow up to N outstanding ' +
-	        'requests at once',
+		'requests at once',
 	    '                                 (default: ' +
-	        fbDflConcurrency + ')',
+		fbDflConcurrency + ')',
 	    '    -d | --duration NSECONDS     Stop after NSECONDS seconds.',
 	    '    -i | --interval NSECONDS     Report every NSECONDS seconds.',
 	    '    -n | --nrequests NREQUESTS   Stop after completing ' +
-	        'NREQUESTS requests.',
+		'NREQUESTS requests.',
 	    ''
 	].join('\n');
 
@@ -95,7 +95,7 @@ function main()
 
 	mod_cmdutil.configure({
 	    'synopses': [
-	        '[OPTIONS] WORKLOAD HOST PORT'
+		'[OPTIONS] WORKLOAD HOST PORT'
 	    ],
 	    'usageMessage': fbUsageMessage()
 	});
@@ -162,6 +162,8 @@ function parseOptInt(option, min)
 		    option.option, option.optarg));
 	}
 
+	mod_assertplus.optionalNumber(min, 'min');
+	mod_assertplus.ok(min !== undefined);
 	if (min !== null && v < min) {
 		mod_cmdutil.usage(new VError(
 		    'value for -%s is too small: "%s"',

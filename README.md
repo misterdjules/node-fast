@@ -2,7 +2,7 @@
 
 This is version 2 of the [node-fast](https://github.com/mcavage/node-fast)
 client library.  Fast is a simple RPC protocol used in Joyent's
-[SmartDataCenter](http://github.com/joyent/sdc) and
+[Triton](http://github.com/joyent/triton) and
 [Manta](https://github.com/joyent/manta) systems, particularly in the
 [Moray](https://github.com/joyent/moray) key-value store.  This README contains
 usage notes.  For developers, see CONTRIBUTING.md.
@@ -107,11 +107,11 @@ scripts, the probes, and their arguments may change over time.**
 
 **Fast client probes:**
 
-Probe name  | Event                                            | Arg0                    | Arg1                     | Arg2                     | Arg3
------------ | ------------------------------------------------ | ----------------------- | ------------------------ | ------------------------ | ----
-`rpc-start` | Client begins issuing an RPC call                | (int) Client identifier | (int) Message identifier | (string) RPC method name | (json) object with "rpcargs" and optional "timeout".
-`rpc-data`  | Client receives 'data' event for outstanding RPC | (int) Client identifier | (int) Message identifier | (json) Received data     | -
-`rpc-done`  | Client finishes processing RPC                   | (int) Client identifier | (int) Message identifier | (json) May contain "error" describing any error that occurred. | -
+Probe name  | Event                                              | Arg0                    | Arg1                     | Arg2                     | Arg3
+----------- | -------------------------------------------------- | ----------------------- | ------------------------ | ------------------------ | ----
+`rpc-start` | Client begins issuing an RPC call                  | (int) Client identifier | (int) Message identifier | (string) RPC method name | (json) object with "rpcargs" and optional "timeout".
+`rpc-data`  | Client receives 'data' message for outstanding RPC | (int) Client identifier | (int) Message identifier | (json) Received data     | -
+`rpc-done`  | Client finishes processing RPC                     | (int) Client identifier | (int) Message identifier | (json) May contain "error" describing any error that occurred. | -
 
 **Fast client scripts in "bin" directory:**
 
@@ -205,6 +205,13 @@ request.  The stream emits `error` when the server reports an error, or if
 there's a socket error or a protocol error.  Consumers need not proactively
 abort requests that fail due to a socket error.
 
+Keep in mind that with any distributed system, failure of an RPC request due to
+a socket error, protocol error, network failure, or timeout does not mean that
+the RPC did not complete successfully or even that it is not still running.  The
+server may have successfully completed the request, or failed it for a different
+reason, or may still be running it when a network error occurs.  Consumers must
+keep this in mind in designing RPC protocols and responses to failure.
+
 As with other Node streams, the request stream will emit exactly one `end` or
 `error` event, after which no other events will be emitted.
 
@@ -261,6 +268,12 @@ This method causes the client to stop sending data on the socket and stop
 reading from the socket.  Any outstanding RPC requests are failed as though the
 socket had emitted an `error`.
 
+This can be used during a graceful shutdown (e.g., of a command-line tool) to
+tear down a Fast client and its associated socket.  This could also be used if
+the caller wanted to stop using this particular client immediately (e.g.,
+because the remote server is no longer registered in the caller's service
+discovery mechanism and should not be used any more).
+
 
 ## Server API
 
@@ -279,13 +292,8 @@ Name            | Type         | Meaning
 Public methods:
 
 * `registerRpcMethod(args)`: register an RPC method handler
-* `rpc.connectionId()`: returns a unique identifier for this connection
-* `rpc.requestId()`: returns a unique identifier for this request
-* `rpc.methodName()`: returns the client-specified name of this request
-* `rpc.argv()`: returns the array of arguments provided by the client for the
-  request
-* `rpc.fail(err)`: report failure of the RPC request with the specified error
 * `close()`: shut down the server
+
 
 #### registerRpcMethod(args): register an RPC method handler
 
@@ -299,10 +307,17 @@ rpchandler      | function     | JavaScript function to invoke for each incoming
 
 The RPC handler function will be invoked as `rpchandler(rpc)`, where `rpc` is an
 RPC context object.  This is a function-oriented interface for accessing
-information about the RPC, including the request identifier, method name,
-and arguments (see above).
+information about the RPC, including the request identifier, method name, and
+arguments.  It provides the following read-only methods:
 
-The `rpc` object is an object-mode stream that the handler can use to emit
+* `rpc.connectionId()`: returns a unique identifier for this connection
+* `rpc.requestId()`: returns a unique identifier for this request
+* `rpc.methodName()`: returns the client-specified name of this request
+* `rpc.argv()`: returns the array of arguments provided by the client for the
+  request
+* `rpc.fail(err)`: report failure of the RPC request with the specified error
+
+The `rpc` object is also an object-mode stream that the handler can use to emit
 values and report request completion.  Values are sent to the client by writing
 them to the stream.  Flow control is supported, provided the handler follows
 conventions for that (i.e., using `pipe()` or checking the return value of

@@ -332,7 +332,7 @@ var mockResponders = [ {
 	/*
 	 * This test case exercises client handling of all decoder errors.  The
 	 * various decoder failure modes are tested separately in
-	 * ./test/protocol/tst.decoder.js.
+	 * ./test/tst.protocol_decoder.js.
 	 */
 	var buf = new Buffer(mod_protocol.FP_HEADER_SZ + 1);
 	mod_testcommon.writeMessageForEncodedData(

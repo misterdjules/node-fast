@@ -21,7 +21,7 @@
 BEGIN
 {
 	printf("Latencies are reported in microseconds.  ");
-        printf("CTRL-C to stop and print results.\n");
+	printf("CTRL-C to stop and print results.\n");
 }
 
 fastserver*:::rpc-start
