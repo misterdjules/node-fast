@@ -556,7 +556,7 @@ var test_cases = [ {
     }
 
 }, {
-    'name': 'request abort, same tick',
+    'name': 'request abandon, same tick',
     'run': function (ctc, callback) {
 	var ctr;
 
@@ -567,19 +567,19 @@ var test_cases = [ {
 		ctc.cleanup();
 		callback();
 	});
-	ctr.ctr_request.abort();
+	ctr.ctr_request.abandon();
 	/* Make sure it's okay to do it again. */
-	ctr.ctr_request.abort();
+	ctr.ctr_request.abandon();
     }
 
 }, {
-    'name': 'request abort after complete',
+    'name': 'request abandon after complete',
     'run': function (ctc, callback) {
 	var ctr;
 
 	ctc.handleNextRequest({ 'error': false, 'data': true });
 	ctr = ctc.makeRequest(function () {
-		ctr.ctr_request.abort();
+		ctr.ctr_request.abandon();
 		mod_assertplus.ok(ctr.ctr_error === null);
 		mod_assertplus.equal(ctr.ctr_data.length, 2);
 		ctc.cleanup();
@@ -588,7 +588,7 @@ var test_cases = [ {
     }
 
 }, {
-    'name': 'request aborted after some data',
+    'name': 'request abandoned after some data',
     'run': function (ctc, callback) {
 	var ctr;
 
@@ -604,13 +604,13 @@ var test_cases = [ {
 		mod_assertplus.ok(ctr.ctr_error !== null);
 		mod_assertplus.equal(ctr.ctr_data.length, 1);
 		mod_assertplus.equal(ctr.ctr_error.cause().name,
-		    'FastRequestAbortedError');
+		    'FastRequestAbandonedError');
 		ctc.cleanup();
 		callback();
 	});
 
 	ctr.ctr_request.once('data', function () {
-		ctr.ctr_request.abort();
+		ctr.ctr_request.abandon();
 	});
     }
 }, {

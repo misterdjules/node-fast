@@ -61,7 +61,7 @@ input.
 Previous implementations of the Fast protocol supported cancellation, but it was
 dangerous to use with servers that did not support it, and there was no way to
 tell if the server did support it.  As a result, this implementation does not
-support cancellation of in-flight requests.  (There's an `abort()` function in
+support cancellation of in-flight requests.  (There's an `abandon()` function in
 the client API, but it only causes the request stream to fail.  The underlying
 RPC continues executing and incoming messages are ignored.)
 
@@ -179,7 +179,7 @@ Public methods:
 
 * `rpc(args)`: initiate an RPC request
 * `rpcBufferAndCallback(args)`: initiate an RPC request and buffer incoming data
-* `request.abort()`: abort an RPC request
+* `request.abandon()`: abandon an RPC request
 * `detach()`: detach client from underlying socket
 
 This class emits `error` when there's a problem with the underlying socket
@@ -195,7 +195,7 @@ Name            | Type         | Meaning
 --------------- | ------------ | -------
 `rpcmethod`     | string       | name of the RPC method to invoke on the server
 `rpcargs`       | array        | JSON-serializable array of RPC call arguments
-`timeout`       | integer      | (optional) milliseconds after which to abort the request if it has not already completed.  The default is that there is no timeout.
+`timeout`       | integer      | (optional) milliseconds after which to abandon the request if it has not already completed.  The default is that there is no timeout.
 `log`           | object       | (optional) bunyan logger for this request.  If not specified, a child logger of the client-level logger will be used.
 
 The return value is an object-mode stream that consumers use to interact with
@@ -203,7 +203,7 @@ the request.  Objects sent by the server to the client are made available via
 this stream.  The stream emits `end` when the server successfully completes the
 request.  The stream emits `error` when the server reports an error, or if
 there's a socket error or a protocol error.  Consumers need not proactively
-abort requests that fail due to a socket error.
+abandon requests that fail due to a socket error.
 
 Keep in mind that with any distributed system, failure of an RPC request due to
 a socket error, protocol error, network failure, or timeout does not mean that
@@ -250,16 +250,25 @@ Name                 | Type                 | Meaning
 `maxObjectsToBuffer` | non-negative integer | maximum number of received data objects that may be buffered.  Subsequently received objects will be dropped.  Callers can tell whether this happened by looking at the `ndata` argument to the callback.
 
 
-#### request.abort(): abort an RPC request
+#### request.abandon(): abandon an RPC request
 
-Clients may invoke `abort()` on the return value from `rpc(args)` to abort the
-request.  If the request is not yet complete, then it will emit an `error`
-indicating the abort, and no more data will be emitted.
+Callers may invoke `abandon()` on the return value from `rpc(args)` to abandon
+the request.  If the request is not yet complete, then it will emit an `error`
+indicating the abandonment, and no more data will be emitted.
 
 This does not actually notify the server.  The server will still process the
-request.  Future implementations may attempt to improve this by asking the
-server to abort the request (though it will still be best-effort, since the
-request may have already completed).
+request.
+
+Additionally, the client will continue to maintain state about this request
+until whenever the request would have otherwise terminated (i.e., until the
+request completes normally, the client is detached from the transport, or
+there's a transport error).  This can in principle result in holding onto a
+small amount of memory for some time.  Since consumers are expected to identify
+and respond to transport errors (e.g., using TCP KeepAlive or the like), this
+should only be possible if the server itself has hung responding to the request,
+and the resources will be freed when the server is restarted or disappears (as
+detected by the underlying transport) or if the consumer drops its references to
+this Fast client.
 
 
 #### detach(): detach client from underlying socket

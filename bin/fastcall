@@ -24,11 +24,11 @@ var mod_net = require('net');
 
 function main()
 {
-	var argv, doabort, host, port, rpcmethod, rpcargs;
+	var argv, doabandon, host, port, rpcmethod, rpcargs;
 	var timeout = null;
 
 	mod_cmdutil.configure({
-	    'synopses': [ '[--abort-immediately] HOST PORT METHOD ARGS' ],
+	    'synopses': [ '[--abandon-immediately] HOST PORT METHOD ARGS' ],
 	    'usageMessage': [
 	        '    HOST     DNS name or IP address for remote server',
 		'    PORT     TCP port for remote server',
@@ -39,11 +39,11 @@ function main()
 	mod_cmdutil.exitOnEpipe();
 
 	argv = process.argv.slice(2);
-	if (argv.length > 4 && argv[0] == '--abort-immediately') {
-		doabort = true;
+	if (argv.length > 4 && argv[0] == '--abandon-immediately') {
+		doabandon = true;
 		argv.shift();
 	} else {
-		doabort = false;
+		doabandon = false;
 	}
 
 	if (argv.length != 4) {
@@ -73,7 +73,7 @@ function main()
 	    'rpcmethod': rpcmethod,
 	    'rpcargs': rpcargs,
 	    'timeout': timeout,
-	    'abortImmediately': doabort
+	    'abandonImmediately': doabandon
 	}, function (err, result) {
 		if (err) {
 			mod_cmdutil.warn(err);
@@ -84,7 +84,7 @@ function main()
 function fastcall(args, callback)
 {
 	var log, conn;
-	var rpcmethod, rpcargs, timeout, doabort;
+	var rpcmethod, rpcargs, timeout, doabandon;
 
 	mod_assertplus.object(args, 'args');
 	mod_assertplus.string(args.host, 'args.host');
@@ -92,12 +92,12 @@ function fastcall(args, callback)
 	mod_assertplus.optionalNumber(args.timeout, 'args.timeout');
 	mod_assertplus.string(args.rpcmethod, 'args.rpcmethod');
 	mod_assertplus.array(args.rpcargs, 'args.rpcargs');
-	mod_assertplus.bool(args.abortImmediately, 'args.abortImmediately');
+	mod_assertplus.bool(args.abandonImmediately, 'args.abandonImmediately');
 
 	rpcmethod = args.rpcmethod;
 	rpcargs = args.rpcargs;
 	timeout = args.timeout;
-	doabort = args.abortImmediately;
+	doabandon = args.abandonImmediately;
 
 	log = new mod_bunyan({
 	    'name': 'fastcall',
@@ -127,8 +127,8 @@ function fastcall(args, callback)
 		    'timeout': timeout
 		});
 
-		if (doabort) {
-			req.abort();
+		if (doabandon) {
+			req.abandon();
 		}
 
 		req.on('error', function (err) {
