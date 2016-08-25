@@ -1,0 +1,150 @@
+#!/usr/bin/env node
+/* vim: set ft=javascript: */
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2016, Joyent, Inc.
+ */
+
+/*
+ * fastcall: command-line tool for making a node-fast RPC method call.
+ */
+
+var VError = require('verror');
+
+var mod_assertplus = require('assert-plus');
+var mod_bunyan = require('bunyan');
+var mod_cmdutil = require('cmdutil');
+var mod_fast = require('../lib/fast_client');
+var mod_net = require('net');
+
+function main()
+{
+	var argv, doabandon, host, port, rpcmethod, rpcargs;
+	var timeout = null;
+
+	mod_cmdutil.configure({
+	    'synopses': [ '[--abandon-immediately] HOST PORT METHOD ARGS' ],
+	    'usageMessage': [
+	        '    HOST     DNS name or IP address for remote server',
+		'    PORT     TCP port for remote server',
+		'    METHOD   Name of remote RPC method call',
+		'    ARGS     JSON-encoded arguments for RPC method call'
+	    ].join('\n')
+	});
+	mod_cmdutil.exitOnEpipe();
+
+	argv = process.argv.slice(2);
+	if (argv.length > 4 && argv[0] == '--abandon-immediately') {
+		doabandon = true;
+		argv.shift();
+	} else {
+		doabandon = false;
+	}
+
+	if (argv.length != 4) {
+		mod_cmdutil.usage('expected four non-option arguments');
+	}
+
+	host = argv[0];
+	port = parseInt(argv[1], 10);
+	if (isNaN(port) || port < 1 || port > 65535) {
+		mod_cmdutil.usage('invalid TCP port: %s\n', argv[1]);
+	}
+
+	rpcmethod = argv[2];
+	try {
+		rpcargs = JSON.parse(argv[3]);
+	} catch (ex) {
+		mod_cmdutil.usage(new VError(ex, 'parsing RPC arguments'));
+	}
+
+	if (!Array.isArray(rpcargs)) {
+		mod_cmdutil.usage(new Error('RPC arguments: expected array'));
+	}
+
+	fastcall({
+	    'host': host,
+	    'port': port,
+	    'rpcmethod': rpcmethod,
+	    'rpcargs': rpcargs,
+	    'timeout': timeout,
+	    'abandonImmediately': doabandon
+	}, function (err, result) {
+		if (err) {
+			mod_cmdutil.warn(err);
+		}
+	});
+}
+
+function fastcall(args, callback)
+{
+	var log, conn;
+	var rpcmethod, rpcargs, timeout, doabandon;
+
+	mod_assertplus.object(args, 'args');
+	mod_assertplus.string(args.host, 'args.host');
+	mod_assertplus.number(args.port, 'args.port');
+	mod_assertplus.optionalNumber(args.timeout, 'args.timeout');
+	mod_assertplus.string(args.rpcmethod, 'args.rpcmethod');
+	mod_assertplus.array(args.rpcargs, 'args.rpcargs');
+	mod_assertplus.bool(args.abandonImmediately, 'args.abandonImmediately');
+
+	rpcmethod = args.rpcmethod;
+	rpcargs = args.rpcargs;
+	timeout = args.timeout;
+	doabandon = args.abandonImmediately;
+
+	log = new mod_bunyan({
+	    'name': 'fastcall',
+	    'level': process.env['LOG_LEVEL'] || 'fatal'
+	});
+
+	log.info(args, 'fastcall start');
+	conn = mod_net.createConnection(args.port, args.host);
+
+	conn.on('connect', function onConnect() {
+		var fastconn, req;
+
+		fastconn = new mod_fast.FastClient({
+		    'log': log,
+		    'transport': conn,
+		    'nRecentRequests': 10
+		});
+
+		fastconn.on('error', function (err) {
+			conn.destroy();
+			callback(new VError(err, 'fast connection'));
+		});
+
+		req = fastconn.rpc({
+		    'rpcmethod': rpcmethod,
+		    'rpcargs': rpcargs,
+		    'timeout': timeout
+		});
+
+		if (doabandon) {
+			req.abandon();
+		}
+
+		req.on('error', function (err) {
+			conn.destroy();
+			callback(new VError(err, 'fast request'));
+		});
+
+		req.on('data', function (message) {
+			console.log(JSON.stringify(message));
+		});
+
+		req.on('end', function () {
+			conn.destroy();
+			callback();
+		});
+	});
+}
+
+main();

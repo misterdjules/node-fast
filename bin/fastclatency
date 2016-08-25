@@ -1,0 +1,40 @@
+#!/usr/sbin/dtrace -s
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2016, Joyent, Inc.
+ */
+
+/*
+ * fastclatency: dump fast client request latency information
+ */
+
+#pragma D option aggsortkey
+#pragma D option aggzoom
+#pragma D option quiet
+#pragma D option zdefs
+
+BEGIN
+{
+	printf("Latencies are reported in microseconds.  ");
+	printf("CTRL-C to stop and print results.\n");
+}
+
+fastclient*:::rpc-start
+{
+	pending[pid, arg0, arg1] = copyinstr(arg2);
+	starts[pid, arg0, arg1] = timestamp;
+}
+
+fastclient*:::rpc-done
+/starts[pid, arg0, arg1] != 0/
+{
+	@[pending[pid, arg0, arg1]] =
+	    quantize((timestamp - starts[pid, arg0, arg1]) / 1000);
+	pending[pid, arg0, arg1] = 0;
+	starts[pid, arg0, arg1] = 0;
+}

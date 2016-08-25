@@ -1,0 +1,494 @@
+#!/usr/bin/env node
+/* vim: set ft=javascript: */
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2016, Joyent, Inc.
+ */
+
+/*
+ * fastbench: command-line tool for making a large number of RPC requests and
+ * measuring latency and throughput.
+ */
+
+var mod_assertplus = require('assert-plus');
+var mod_bunyan = require('bunyan');
+var mod_cmdutil = require('cmdutil');
+var mod_extsprintf = require('extsprintf');
+var mod_getopt = require('posix-getopt');
+var mod_jsprim = require('jsprim');
+var mod_kang = require('kang');
+var mod_net = require('net');
+var mod_os = require('os');
+var mod_strsplit = require('strsplit');
+var mod_vasync = require('vasync');
+
+var printf = mod_extsprintf.printf;
+var sprintf = mod_extsprintf.sprintf;
+var VError = require('verror');
+
+var mod_fast = require('../lib/fast');
+var mod_fastbench = require('../lib/bench');
+
+/* default concurrency of the client */
+var fbDflConcurrency = 1;
+/* default reporting interval, in seconds */
+var fbDflReportingInterval = 5;
+/* default port for kang server */
+var fbDflKangPort = 16520;
+
+/*
+ * The Big Theory Statement in lib/fast_server.js explains that completing N
+ * requests over a single client socket takes O(N^2) time.  To keep this
+ * manageable, fastbench attempts to maintain a fixed number of requests per
+ * connection.
+ */
+var fbDflRequestsPerConnection = 10;
+
+function fbUsageMessage()
+{
+	var msg, workloads;
+
+	msg = 'Runs Fast RPC requests to measure latency and throughput.\n\n';
+	msg += 'Available canned workloads:\n\n';
+	workloads = mod_fastbench.fastBenchWorkloads();
+	mod_jsprim.forEachKey(workloads, function (name, workload) {
+		msg += sprintf('    %-8s  %s\n', name, workload.description);
+	});
+
+	msg += [
+	    '',
+	    'Options:',
+	    '',
+	    '    -c | --concurrency N         Allow up to N outstanding ' +
+		'requests at once',
+	    '                                 (default: ' +
+		fbDflConcurrency + ')',
+	    '    -d | --duration NSECONDS     Stop after NSECONDS seconds.',
+	    '    -i | --interval NSECONDS     Report every NSECONDS seconds.',
+	    '    -n | --nrequests NREQUESTS   Stop after completing ' +
+		'NREQUESTS requests.',
+	    ''
+	].join('\n');
+
+	return (msg);
+}
+
+function main()
+{
+	var parser, option, args;
+	var workloads, wname;
+	var config = {
+	    'fbHost': null,
+	    'fbPort': null,
+	    'fbWorkload': null,
+	    'fbNRequests': null,
+	    'fbDuration': null,
+	    'fbReportingInterval': fbDflReportingInterval * 1000,
+	    'fbConcurrency': fbDflConcurrency,
+	    'fbKangPort': fbDflKangPort
+	};
+
+	mod_cmdutil.configure({
+	    'synopses': [
+		'[OPTIONS] WORKLOAD HOST PORT'
+	    ],
+	    'usageMessage': fbUsageMessage()
+	});
+
+	parser = new mod_getopt.BasicParser(
+	    'c:(count)d:(duration)i:(interval)n:(nrequests)', process.argv);
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'c':
+			config.fbConcurrency = parseOptInt(option, 1);
+			break;
+
+		case 'd':
+			config.fbDuration = 1000 * parseOptInt(option, 1);
+			break;
+
+		case 'i':
+			config.fbReportingInterval =
+			    1000 * parseOptInt(option, 0);
+			break;
+
+		case 'n':
+			config.fbNRequests = parseOptInt(option, 1);
+			break;
+
+		default:
+			/* error message already emitted */
+			mod_assertplus.equal('?', option.option);
+			mod_cmdutil.usage();
+			break;
+		}
+	}
+
+	args = process.argv.slice(parser.optind());
+	if (args.length < 3) {
+		mod_cmdutil.usage('expected workload, host, and port');
+	}
+
+	workloads = mod_fastbench.fastBenchWorkloads();
+	wname = args[0];
+	if (!workloads.hasOwnProperty(wname)) {
+		mod_cmdutil.usage('unsupported workload: %s', wname);
+	}
+
+	config.fbWorkload = new (workloads[wname].cons)();
+	config.fbHost = args[1];
+	config.fbPort = parseInt(args[2], 10);
+	if (isNaN(config.fbPort) || config.fbPort < 1 ||
+	    config.fbPort > 65535) {
+		mod_cmdutil.usage('bad port number: %s', args[2]);
+	}
+
+	fastbench(config);
+}
+
+function parseOptInt(option, min)
+{
+	var v;
+
+	v = parseInt(option.optarg, 10);
+	if (isNaN(v)) {
+		mod_cmdutil.usage(new VError(
+		    'value for -%s is not an integer: "%s"',
+		    option.option, option.optarg));
+	}
+
+	mod_assertplus.optionalNumber(min, 'min');
+	mod_assertplus.ok(min !== undefined);
+	if (min !== null && v < min) {
+		mod_cmdutil.usage(new VError(
+		    'value for -%s is too small: "%s"',
+		    option.option, option.optarg));
+	}
+
+	return (v);
+}
+
+function fastbench(config)
+{
+	var log, queue, bencher, nconns, i;
+	var start = new Date();
+
+	printf('%s (%d) pid %d: running workload "%s" ',
+	    start.toISOString(), start.getTime(), process.pid,
+	    config.fbWorkload.name());
+
+	if (config.fbNRequests !== null) {
+		if (config.fbDuration !== null) {
+			printf('for %d requests or %d milliseconds',
+			    config.fbNRequests, config.fbDuration);
+		} else {
+			printf('for %d requests', config.fbNRequests);
+		}
+	} else if (config.fbDuration !== null) {
+		printf('for %d milliseconds', config.fbDuration);
+	} else {
+		printf('until killed (type CTRL-C for results)');
+	}
+
+	printf('\n');
+
+	log = new mod_bunyan({
+	    'name': 'fastbench',
+	    'level': process.env['LOG_LEVEL'] || 'fatal'
+	});
+
+	queue = mod_vasync.queuev({
+	    'concurrency': 10,
+	    'worker': function fastbenchInitConn(_, queuecallback) {
+		var csock;
+		csock = mod_net.createConnection(config.fbPort, config.fbHost);
+		bencher.fb_sockets.push(csock);
+
+		csock.on('error', function (err) {
+			mod_cmdutil.fail(new VError(err, 'socket error'));
+		});
+		csock.on('connect', function () {
+			var fastclient = new mod_fast.FastClient({
+			    'log': log,
+			    'transport': csock,
+			    'nRecentRequests': 5
+			});
+
+			bencher.fb_fastclients.push(fastclient);
+			fastclient.on('error', function (err) {
+				mod_cmdutil.fail(
+				    new VError(err, 'client error'));
+			});
+
+			queuecallback();
+		});
+	    }
+	});
+
+	bencher = new FastBench();
+	bencher.fb_config = config;
+	bencher.fb_sockets = [];
+	bencher.fb_fastclients = [];
+
+	nconns = Math.ceil(config.fbConcurrency / fbDflRequestsPerConnection);
+	mod_assertplus.ok(nconns > 0);
+	for (i = 0; i < nconns; i++) {
+		queue.push(0);
+	}
+	queue.close();
+	queue.on('end', function () {
+		printf('established %d connections to %s:%d\n',
+		    bencher.fb_sockets.length, config.fbHost, config.fbPort);
+		mod_assertplus.equal(bencher.fb_sockets.length,
+		    bencher.fb_fastclients.length);
+
+		mod_kang.knStartServer({
+		    'port': config.fbKangPort,
+		    'uri_base': '/kang',
+		    'service_name': 'fastbench',
+		    'version': '1.0.0',
+		    'ident': mod_os.hostname() + '/' + process.pid,
+		    'list_types': bencher.kangListTypes.bind(bencher),
+		    'list_objects': bencher.kangListObjects.bind(bencher),
+		    'get': bencher.kangGetObject.bind(bencher),
+		    'stats': bencher.kangStats.bind(bencher)
+		}, function (err, server) {
+			mod_assertplus.ok(!err);
+			bencher.fb_kangserver = server;
+			log.info({ 'kangPort': config.fbKangPort },
+			    'listening for kang requests');
+
+			if (config.fbDuration !== null) {
+				setTimeout(function onCommandTimeout() {
+					bencher.finish();
+				}, config.fbDuration);
+			}
+
+			process.once('SIGINT', function onSigInt() {
+				bencher.finish();
+			});
+
+			bencher.start();
+		});
+	});
+}
+
+function FastBench()
+{
+	this.fb_sockets = null;	/* list of client sockets */
+	this.fb_fastclients = null;	/* list of fast clients */
+	this.fb_config = null;		/* configuration */
+
+	this.fb_queue = null;	/* vasync queue for sending requests */
+	this.fb_start = null;	/* start hrtime */
+	this.fb_done = null;	/* finish hrtime */
+	this.fb_nissued = 0;	/* issued RPCs */
+	this.fb_ncompleted = 0;	/* completed RPCs */
+	this.fb_nerrors = 0;	/* unexpected errors */
+	this.fb_hiwat = 0;	/* maximum observed concurrency */
+	this.fb_timeout = null;	/* reporting timeout */
+	this.fb_kangserver = null;	/* kang server */
+
+	/* last reported stats */
+	this.fb_reported_ncompleted = 0;
+	this.fb_reported_nerrors = 0;
+}
+
+FastBench.prototype.start = function ()
+{
+	var ntoissue, i;
+	var self = this;
+
+	mod_assertplus.object(this.fb_sockets);
+	mod_assertplus.object(this.fb_fastclients);
+	mod_assertplus.object(this.fb_config);
+	mod_assertplus.ok(this.fb_queue === null);
+	mod_assertplus.ok(this.fb_sockets.length > 0);
+
+	this.fb_start = process.hrtime();
+	this.fb_queue = mod_vasync.queuev({
+	    'concurrency': this.fb_config.fbConcurrency,
+	    'worker': this.doWork.bind(this)
+	});
+
+	/*
+	 * This is kind of a cheesy way to do this.
+	 */
+	if (this.fb_config.fbNRequests !== null) {
+		ntoissue = Math.min(this.fb_config.fbConcurrency,
+		    this.fb_config.fbNRequests);
+	} else {
+		ntoissue = this.fb_config.fbConcurrency;
+	}
+
+	for (i = 0; i < ntoissue; i++) {
+		this.fb_queue.push(0);
+	}
+
+	if (this.fb_config.fbReportingInterval > 0) {
+		this.fb_timeout = setTimeout(function tickForReport() {
+			self.fb_timeout = setTimeout(tickForReport,
+			    self.fb_config.fbReportingInterval);
+			self.report();
+		}, self.fb_config.fbReportingInterval);
+	}
+};
+
+FastBench.prototype.doWork = function (_, queuecb)
+{
+	var self = this;
+	var concur, client;
+
+	if (this.fb_done !== null) {
+		setImmediate(queuecb);
+		return;
+	}
+
+	this.fb_nissued++;
+	concur = this.fb_nissued - this.fb_ncompleted;
+	if (concur > this.fb_hiwat) {
+		this.fb_hiwat = concur;
+	}
+
+	client = this.fb_fastclients[
+	    this.fb_nissued % this.fb_fastclients.length];
+	mod_assertplus.object(client);
+	this.fb_config.fbWorkload.nextRequest(client, function (err) {
+		if (self.fb_done !== null) {
+			queuecb();
+			return;
+		}
+
+		if (err) {
+			self.fb_nerrors++;
+		}
+
+		self.fb_ncompleted++;
+		if (self.fb_config.fbNRequests !== null) {
+			if (self.fb_nissued < self.fb_config.fbNRequests) {
+				self.fb_queue.push(0);
+			} else if (self.fb_ncompleted ==
+			    self.fb_config.fbNRequests) {
+				self.finish();
+			}
+		} else {
+			self.fb_queue.push(0);
+		}
+
+		queuecb();
+	});
+};
+
+FastBench.prototype.finish = function ()
+{
+	this.fb_done = process.hrtime();
+	this.fb_sockets.forEach(function (s) {
+		s.destroy();
+	});
+	this.fb_fastclients.forEach(function (fastclient) {
+		fastclient.detach();
+	});
+
+	if (this.fb_timeout !== null) {
+		clearTimeout(this.fb_timeout);
+	}
+
+	this.fb_kangserver.close();
+	this.printResults();
+};
+
+FastBench.prototype.report = function ()
+{
+	var elapsed, elapsedms;
+	var ndone, nerrors;
+
+	elapsed = process.hrtime(this.fb_start);
+	elapsedms = mod_jsprim.hrtimeMillisec(elapsed);
+	ndone = this.fb_ncompleted - this.fb_reported_ncompleted;
+	nerrors = this.fb_nerrors - this.fb_reported_nerrors;
+	this.fb_reported_ncompleted = this.fb_ncompleted;
+	this.fb_reported_nerrors = this.fb_nerrors;
+
+	printf('%d %4d.%03dms  %d completed, %d failed\n',
+	    Date.now(), Math.floor(elapsedms / 1000), elapsedms % 1000,
+	    ndone, nerrors);
+};
+
+FastBench.prototype.printResults = function ()
+{
+	var duration, durationus;
+
+	duration = mod_jsprim.hrtimeDiff(this.fb_done, this.fb_start);
+	durationus = mod_jsprim.hrtimeMicrosec(duration);
+
+	printf('-----------------------------------\n');
+	printf('total runtime:             %d.%06ds\n',
+	    Math.floor(durationus / 1e6), durationus % 1e6);
+	printf('total requests completed:  %d (%d issued)\n',
+	    this.fb_ncompleted, this.fb_nissued);
+	printf('total unexpected errors:   %d\n', this.fb_nerrors);
+	printf('error rate:                %s%%\n',
+	    (100 * this.fb_nerrors / this.fb_ncompleted).toFixed(2));
+	printf('maximum concurrency:       %d\n', this.fb_hiwat);
+	printf('request throughput:        %d requests per second\n',
+	    this.fb_ncompleted / durationus * 1e6);
+
+	/*
+	 * This really is a rougher estimate than it looks.  It's only true if
+	 * we really were at max concurrency the whole time.
+	 */
+	printf('estimated average latency: %d us\n',
+	    durationus / (this.fb_ncompleted / this.fb_hiwat));
+};
+
+FastBench.prototype.kangStats = function ()
+{
+	return ({
+	    'nRpcStarted': this.fb_nissued,
+	    'nRpcDone': this.fb_ncompleted,
+	    'nErrors': this.fb_nerrors,
+	    'maxObservedConcurrency': this.fb_hiwat
+	});
+};
+
+FastBench.prototype.kangListTypes = function ()
+{
+	if (this.fb_start === null) {
+		return ([]);
+	}
+
+	return (this.fb_fastclients[0].kangListTypes());
+};
+
+FastBench.prototype.kangListObjects = function (type)
+{
+	/*
+	 * It would be much better if Kang had a better way to aggregate up
+	 * hierarchies of objects.  This is pretty cheesy.
+	 */
+	var rv = [];
+
+	this.fb_fastclients.forEach(function (fastclient, i) {
+		var objs = fastclient.kangListObjects(type);
+		objs.forEach(function (key) { rv.push(i + '/' + key); });
+	});
+
+	return (rv);
+};
+
+FastBench.prototype.kangGetObject = function (type, id)
+{
+	var parts, client;
+
+	parts = mod_strsplit(id, '/', 2);
+	mod_assertplus.equal(parts.length, 2);
+	client = this.fb_fastclients[parts[0]];
+	return (client.kangGetObject(type, parts[1]));
+};
+
+main();

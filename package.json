@@ -1,0 +1,32 @@
+{
+	"name": "fast2",
+	"description": "streaming JSON RPC over TCP, version 2",
+	"version": "0.1.0",
+	"main": "./lib/fast.js",
+	"repository": {
+		"type": "git",
+		"url": "git://github.com/joyent/node-fast2.git"
+	},
+	"dependencies": {
+		"assert-plus": "1.0.0",
+		"bunyan": "^1.7.1",
+		"cmdutil": "^1.0.0",
+		"crc": "0.3.0",
+		"extsprintf": "^1.3.0",
+		"jsprim": "^1.2.2",
+		"kang": "^1.0.1",
+		"lstream": "0.0.4",
+		"microtime": "2.0.0",
+		"posix-getopt": "1.2.0",
+		"strsplit": "^1.0.0",
+		"vasync": "^1.6.3",
+		"verror": "^1.7.0"
+	},
+	"devDependencies": {
+		"forkexec": "^1.0.0"
+	},
+	"optionalDependencies": {
+	    "dtrace-provider": "^0.6.0"
+	},
+	"license": "MIT"
+}

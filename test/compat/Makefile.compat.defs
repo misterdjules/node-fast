@@ -1,0 +1,9 @@
+#
+# Copyright (c) 2016, Joyent, Inc. All rights reserved.
+#
+# Makefile.compat.defs: defines variables used for setting up and running the
+# Fast library compatibility tests.
+#
+
+FAST_COMPAT_TESTDIR	 = test/compat
+NODE			?= $(error expected NODE to be defined in Makefile)

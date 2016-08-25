@@ -1,0 +1,129 @@
+#!/bin/bash
+
+#
+# perfrun: quick-and-dirty tool to run a set of performance tests using fastbench
+#
+
+set -o pipefail
+
+arg0=perfrun
+
+function fail
+{
+	echo "$arg0: $@" >&2
+	exit 1
+}
+
+function usage
+{
+	echo "$arg0 SERVER_PID SERVER_PORT TEST_NAME" >&2
+	echo "    SERVER_PID is the pid of the server." >&2
+	echo "    SERVER_PORT is the TCP port of the server to test." >&2
+	echo "    TEST_NAME is the basename of the output directory." >&2
+	exit 2
+}
+
+pr_pid=
+pr_port=
+pr_testdir=
+pr_children=
+# seconds between memory samples
+pr_sample_mem=5
+# seconds between CPU usage samples
+pr_sample_cpu=5
+# seconds to wait between runs
+pr_wait=30
+pr_warmup=true
+pr_concurrencies="8 16 32 64 128 256 512 1024"
+pr_testduration=60
+pr_bindir=
+pr_fastbench=
+
+function main
+{
+	local first
+
+	if [[ $# != 3 ]]; then
+		usage
+	fi
+
+	pr_pid="$1"
+	pr_port="$2"
+	pr_testdir="$3"
+	if [[ -e "$pr_testdir" ]]; then
+		fail "refusing to clobber data in \"$pr_testdir\""
+	fi
+
+	pr_bindir="$(dirname ${BASH_SOURCE[0]})/../bin"
+	pr_fastbench="$pr_bindir/fastbench"
+
+	mkdir -p "$pr_testdir"
+
+	echo "Server: pid $pr_pid on port $pr_port."
+	echo "Will test concurrencies: $pr_concurrencies."
+	echo "Using fastbench: $pr_fastbench"
+	echo "Beginning data collection."
+	trap cleanup EXIT
+
+	# Start monitoring memory
+	(while :; do 
+		echo "$(date +%s) $(ps -opid= -orss= -ovsz= -p "$pr_pid")"
+		sleep $pr_sample_mem;
+	done) > $pr_testdir/memory.out &
+	pr_children="$pr_children $!"
+
+	# Start monitoring CPU usage
+	prstat -d u -Lmc -p "$pr_pid" $pr_sample_cpu > $pr_testdir/prstat.out &
+	pr_children="$pr_children $!"
+	echo "Child processes: $pr_children"
+
+	# Wait for a few data points
+	echo "Waiting for initial data points."
+	sleep $pr_sample_mem
+	sleep $pr_sample_cpu
+
+	if [[ "$pr_warmup" != "false" ]]; then
+		echo "Beginning warmup."
+		if ! $pr_fastbench -c 1 -i 5 -d 300 sync 127.0.0.1 "$pr_port" | \
+		    tee $pr_testdir/fastbench-warmup.out; then
+			fail "bailing out because warmup failed"
+		fi
+
+		sleep $pr_wait
+	fi
+
+	first=true
+	for concur in $pr_concurrencies; do
+		if [[ $first != "true" ]]; then
+			echo "Pausing for $pr_wait seconds."
+			sleep $pr_wait
+		else
+			first=false
+		fi
+
+		echo "Starting test: concurrency = $concur"
+		$pr_bindir/fastclatency > \
+		    $pr_testdir/latency-sleep150-$concur.out &
+		pr_dtrace="$!"
+
+		if ! $pr_fastbench -c $concur -i 5 \
+		    -d $pr_testduration sleep150 127.0.0.1 "$pr_port" | \
+		    tee $pr_testdir/fastbench-sleep150-$concur.out; then
+			kill $pr_dtrace
+			fail "bailing out after failed test"
+		fi
+
+		kill $pr_dtrace
+	done
+}
+
+function cleanup
+{
+	echo "Cleaning up processes: $pr_children"
+	for c in $pr_children; do
+		kill $c
+	done
+	wait
+}
+
+main "$@"

@@ -1,0 +1,19 @@
+#
+# Copyright (c) 2016, Joyent, Inc. All rights reserved.
+#
+# Makefile.compat.targ: defines targets used for setting up and running the Fast
+# library compatibility tests.
+#
+
+#
+# We normally despise monolithic targets that do a bunch of work like this.
+# It's typically much better to have them depend on intermediate targets that do
+# the real work so that the target is interruptible, incremental, and
+# parallelizable.  In this case, the main output is the local copy of the
+# node-fast module, but the presence of that module does not mean it was
+# successfully installed.
+#
+test-compat:
+	(cd $(FAST_COMPAT_TESTDIR) && $(NODE) setup.js && \
+	    $(NODE) manual-tst.client_compat.js)
+CLEAN_FILES 		+= $(FAST_COMPAT_TESTDIR)/node_modules
