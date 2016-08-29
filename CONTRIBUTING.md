@@ -1,4 +1,4 @@
-# Contributing to node-fast2
+# Contributing to node-fast
 
 This repository uses [cr.joyent.us](https://cr.joyent.us) (Gerrit) for new
 changes.  Anyone can submit changes.  To get started, see the [cr.joyent.us user

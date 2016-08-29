@@ -1,14 +1,12 @@
-# node-fast2: streaming JSON RPC over TCP
+# node-fast: streaming JSON RPC over TCP
 
-This is version 2 of the [node-fast](https://github.com/mcavage/node-fast)
-client library.  Fast is a simple RPC protocol used in Joyent's
+Fast is a simple RPC protocol used in Joyent's
 [Triton](http://github.com/joyent/triton) and
 [Manta](https://github.com/joyent/manta) systems, particularly in the
 [Moray](https://github.com/joyent/moray) key-value store.  This README contains
 usage notes.  For developers, see CONTRIBUTING.md.
 
-Despite the name, this module contains an implementation of the protocol version
-**1** (it's just a new implementation).  The module includes:
+This module includes:
 
 * client library interface
 * server library interface

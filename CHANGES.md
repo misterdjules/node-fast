@@ -1,6 +1,11 @@
 # Fast Changelog
 
-## Not yet released
+## Not yet released.
+
+No changes.
+
+
+## v2.0.0 (2016-08-29)
 
 This is a complete rewrite of the Fast client and server implementation.  Almost
 everything about the API has changed, including constructors, methods, and
@@ -49,3 +54,6 @@ Other notable differences include:
 * The client DTrace probes have been revised.  Server DTrace probes have been
   added.  (See README.)
 * Kang entry points have been added for observability.  (See README.)
+
+The original implementation can be found in the [v0.x
+branch](https://github.com/joyent/node-fast/tree/fast-v0.x).
