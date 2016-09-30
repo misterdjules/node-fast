@@ -355,7 +355,7 @@ var test_cases = [ {
     }
 
 }, {
-    'name': 'server sends message with null value',
+    'name': 'server sends message with null value, not allowed',
     'run': function (ctc, callback) {
 	var ctr;
 
@@ -374,6 +374,29 @@ var test_cases = [ {
 		    'FastProtocolError');
 		mod_assertplus.equal(ctr.ctr_error.cause().message,
 		    'server sent "null" value');
+		ctc.cleanup();
+		callback();
+	});
+    }
+
+}, {
+    'name': 'server sends message with null value, ignored',
+    'run': function (ctc, callback) {
+	var ctr;
+
+	ctc.ctc_server_decoder.once('data', function (message) {
+		ctc.ctc_server_encoder.end({
+		    'msgid': message.msgid,
+		    'status': mod_protocol.FP_STATUS_END,
+		    'data': { 'd': [ true, null, 7 ] }
+		});
+	});
+
+	ctr = ctc.makeRequestWithOptions({
+	    'ignoreNullValues': true
+	}, function () {
+		mod_assertplus.ok(ctr.ctr_error === null);
+		mod_assertplus.deepEqual(ctr.ctr_data, [ true, 7 ]);
 		ctc.cleanup();
 		callback();
 	});

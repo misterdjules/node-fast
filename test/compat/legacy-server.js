@@ -113,8 +113,12 @@ function setupRpcHandlers()
 		response = arguments[arguments.length - 1];
 		args = Array.prototype.slice.call(
 		    arguments, 0, arguments.length - 1);
-		if (args.length != 1 || args[0] === null ||
-		    typeof (args[0]) != 'object' ||
+		if (args.length == 1 && args[0] === null) {
+			response.end(null);
+			return;
+		}
+
+		if (args.length != 1 || typeof (args[0]) != 'object' ||
 		    !Array.isArray(args[0].values) ||
 		    typeof (args[0].errorResult) != 'boolean') {
 			response.end(new Error('bad arguments'));

@@ -194,6 +194,45 @@ testcases = [ {
 	});
     }
 
+}, {
+    'name': 'working RPC with null value, not allowed',
+    'run': function (log, fastclient, callback) {
+	fastclient.rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 3,
+	    'rpcmethod': 'echo',
+	    'rpcargs': [ null ]
+	}, function (err, data, ndata) {
+		if (!err) {
+			callback(new Error('expected error'));
+			return;
+		}
+
+		/* JSSTYLED */
+		mod_assertplus.ok(/server sent "null" value/.test(err.message));
+		callback();
+	});
+    }
+
+}, {
+    'name': 'working RPC with null value, allowed',
+    'run': function (log, fastclient, callback) {
+	fastclient.rpcBufferAndCallback({
+	    'maxObjectsToBuffer': 3,
+	    'ignoreNullValues': true,
+	    'rpcmethod': 'echo',
+	    'rpcargs': [ null ]
+	}, function (err, data, ndata) {
+		if (err) {
+			callback(err);
+			return;
+		}
+
+		mod_assertplus.equal(data.length, ndata);
+		mod_assertplus.equal(data.length, 0);
+		callback();
+	});
+    }
+
 } ];
 
 main();

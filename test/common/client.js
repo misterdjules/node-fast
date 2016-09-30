@@ -147,6 +147,12 @@ ClientTestContext.prototype.serverReply = function (message, options)
  */
 ClientTestContext.prototype.makeRequest = function (callback)
 {
+	return (this.makeRequestWithOptions({}, callback));
+};
+
+ClientTestContext.prototype.makeRequestWithOptions =
+    function (options, callback)
+{
 	var req, log;
 	var ctr = new ClientTestRequest(this);
 
@@ -154,6 +160,7 @@ ClientTestContext.prototype.makeRequest = function (callback)
 	ctr.ctr_data = [];
 
 	req = ctr.ctr_request = this.ctc_fastclient.rpc({
+	    'ignoreNullValues': options.ignoreNullValues,
 	    'rpcmethod': mod_testcommon.dummyRpcMethodName,
 	    'rpcargs': mod_testcommon.dummyRpcArgs
 	});

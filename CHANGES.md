@@ -4,6 +4,9 @@
 
 No changes.
 
+## v2.1.0
+
+* #1 need limited support for servers that send null values
 
 ## v2.0.0 (2016-08-29)
 

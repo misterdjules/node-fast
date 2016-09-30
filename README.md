@@ -189,12 +189,13 @@ from completing.  This would usually be a protocol error of some sort.
 
 Named arguments:
 
-Name            | Type         | Meaning
---------------- | ------------ | -------
-`rpcmethod`     | string       | name of the RPC method to invoke on the server
-`rpcargs`       | array        | JSON-serializable array of RPC call arguments
-`timeout`       | integer      | (optional) milliseconds after which to abandon the request if it has not already completed.  The default is that there is no timeout.
-`log`           | object       | (optional) bunyan logger for this request.  If not specified, a child logger of the client-level logger will be used.
+Name               | Type         | Meaning
+---------------    | ------------ | -------
+`rpcmethod`        | string       | name of the RPC method to invoke on the server
+`rpcargs`          | array        | JSON-serializable array of RPC call arguments
+`timeout`          | integer      | (optional) milliseconds after which to abandon the request if it has not already completed.  The default is that there is no timeout.
+`log`              | object       | (optional) bunyan logger for this request.  If not specified, a child logger of the client-level logger will be used.
+`ignoreNullValues` | boolean      | (optional) if true, null data values will be accepted from the server and dropped.  These are otherwise considered a protocol error.
 
 The return value is an object-mode stream that consumers use to interact with
 the request.  Objects sent by the server to the client are made available via
