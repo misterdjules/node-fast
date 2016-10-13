@@ -4,6 +4,10 @@
 
 No changes.
 
+## v2.2.0
+
+* #2 update dependencies to support Node v4
+
 ## v2.1.0
 
 * #1 need limited support for servers that send null values
