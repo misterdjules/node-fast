@@ -4,6 +4,10 @@
 
 No changes.
 
+## v2.2.1
+
+* #3 client should not log at "error" level
+
 ## v2.2.0
 
 * #2 update dependencies to support Node v4
