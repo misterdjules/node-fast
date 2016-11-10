@@ -4,6 +4,10 @@
 
 No changes.
 
+## v2.2.2
+
+* #4 client should preserve "ase\_errors" for Errors
+
 ## v2.2.1
 
 * #3 client should not log at "error" level

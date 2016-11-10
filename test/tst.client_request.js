@@ -247,6 +247,48 @@ var mockResponders = [ {
     }
 
 }, {
+    'name': 'error with extra properties',
+    'serverReply': function (socket, message, encoder) {
+	/*
+	 * The "context" and "ase_errors" properties are supposed to be
+	 * preserved for historical reasons, but other miscellaneous properties
+	 * do not get transmitted.
+	 */
+	assertNormalRequest(message);
+	encoder.end({
+	    'msgid': message.msgid,
+	    'status': mod_protocol.FP_STATUS_ERROR,
+	    'data': {
+	        'd': {
+		    'name': 'DummyError',
+		    'message': 'a dummy message',
+		    'someOtherProp': 'bogus',
+		    'context': 'abc123',
+		    'ase_errors': [ 'foobar' ]
+		}
+	    }
+	});
+    },
+    'clientCheck': function (data, errors) {
+	var error;
+
+	mod_assertplus.ok(errors.socket === null);
+	mod_assertplus.ok(errors.client === null);
+	mod_assertplus.ok(errors.request !== null);
+	mod_assertplus.equal(data.length, 0);
+
+	error = errors.request;
+	mod_assertplus.equal(error.name, 'FastRequestError');
+	error = VError.cause(error);
+	mod_assertplus.equal(error.name, 'FastServerError');
+	error = VError.cause(error);
+	mod_assertplus.equal(error.name, 'DummyError');
+	mod_assertplus.deepEqual(error.context, 'abc123');
+	mod_assertplus.deepEqual(error.ase_errors, [ 'foobar' ]);
+	mod_assertplus.ok(!error.hasOwnProperty('someOtherProp'));
+    }
+
+}, {
     'name': 'unexpected end of stream: no response at all',
     'serverReply': function (socket, message, encoder) {
 	socket.end();
