@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2016, Joyent, Inc.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 /*
@@ -52,6 +52,7 @@ function main()
 function ServerTestContext()
 {
 	this.ts_log = null;	/* bunyan logger */
+	this.ts_closed = false;	/* whether we've already done cleanup */
 	this.ts_socket = null;	/* server net socket */
 	this.ts_server = null;	/* fast server object */
 	this.ts_clients = [];	/* array of clients, each having properties */
@@ -93,6 +94,12 @@ ServerTestContext.prototype.firstFastClient = function ()
 
 ServerTestContext.prototype.cleanup = function ()
 {
+	if (this.ts_closed) {
+		return;
+	}
+
+	this.ts_closed = true;
+
 	this.ts_clients.forEach(function (c) {
 		c.tsc_client.detach();
 		c.tsc_socket.destroy();
@@ -654,6 +661,60 @@ serverTestCases = [ {
 	}, function (err) {
 		mod_assertplus.equal(err.name, 'FastTransportError');
 	}, callback);
+    }
+
+}, {
+    'name': 'connection error followed by server shutdown',
+    'run': function (tctx, callback) {
+	var c = tctx.ts_clients[0];
+	var log = tctx.ts_log;
+	var rpc;
+
+	/* Save the RPC handle, and reply so we know we can continue. */
+	function fastRpcBlock(r) {
+		r.write({ 'start': true });
+		rpc = r;
+	}
+
+	tctx.ts_server.registerRpcMethod({
+		rpcmethod: 'block',
+		rpchandler: fastRpcBlock
+	});
+
+	/* Kick off an RPC, and wait until it's started. */
+	var req = c.tsc_client.rpc({
+		'rpcmethod': 'block',
+		'rpcargs': [ ]
+	});
+
+	/* Ignore (but log) the expected transport error. */
+	req.on('error', function (err) {
+		log.info(err, 'received expected error');
+	});
+
+	/* Kill the RPC once it's started. */
+	req.once('data', function () {
+		setImmediate(killRPC);
+	});
+
+	function killRPC() {
+		/* Disconnect client so we'll get EPIPE below. */
+		c.tsc_client.detach();
+		c.tsc_socket.destroy();
+
+		/* Attempt socket write so onConnectionError() gets called. */
+		rpc.write({ 'kaboom': 'error' });
+		rpc.end();
+
+		/* Now run the server clean up, which shouldn't crash. */
+		tctx.ts_socket.on('close', function () {
+			tctx.ts_server.close();
+			tctx.ts_closed = true;
+
+			callback();
+		});
+		tctx.ts_socket.close();
+	}
     }
 
 }, {

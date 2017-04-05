@@ -4,6 +4,10 @@
 
 No changes.
 
+## v2.2.3
+
+* #5 Server shutdown crashes when a connection had a socket error
+
 ## v2.2.2
 
 * #4 client should preserve "ase\_errors" for Errors
