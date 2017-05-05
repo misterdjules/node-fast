@@ -62,6 +62,7 @@ Other concrete API differences include:
 * `Client.rpc()` now takes named arguments as mentioned above.
 * `Server.rpc()` is now called `Server.registerRpcMethod()` and takes named
   arguments as mentioned above.
+* The server no longer provides an `after` event after RPC requests complete.
 
 Other notable differences include:
 
