@@ -1,7 +1,7 @@
 {
 	"name": "fast",
 	"description": "streaming JSON RPC over TCP",
-	"version": "2.2.3",
+	"version": "2.2.4",
 	"main": "./lib/fast.js",
 	"repository": {
 		"type": "git",

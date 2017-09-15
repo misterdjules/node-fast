@@ -4,6 +4,10 @@
 
 No changes.
 
+## v2.2.4
+
+* #7 fsr_context isn't always unpiped from fsr_encoder, which causes memory leaks
+
 ## v2.2.3
 
 * #5 Server shutdown crashes when a connection had a socket error
