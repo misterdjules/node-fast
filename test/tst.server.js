@@ -13,6 +13,7 @@
  */
 
 var mod_assertplus = require('assert-plus');
+var mod_artedi = require('artedi');
 var mod_bunyan = require('bunyan');
 var mod_net = require('net');
 var mod_path = require('path');
@@ -57,6 +58,7 @@ function ServerTestContext()
 	this.ts_server = null;	/* fast server object */
 	this.ts_clients = [];	/* array of clients, each having properties */
 				/* "tsc_socket" and "tsc_client" */
+	this.ts_collector = null;	/* artedi metric collector */
 }
 
 ServerTestContext.prototype.connectClient = function (callback)
@@ -160,6 +162,9 @@ function runTestCase(testcase, callback)
 
 	tctx = new ServerTestContext();
 	tctx.ts_log = testLog.child({ 'testcase': testcase['name'] });
+	tctx.ts_collector = mod_artedi.createCollector({
+	    'labels': { 'component': 'FastServer' }
+	});
 	tctx.ts_socket = mod_net.createServer({ 'allowHalfOpen': true });
 	tctx.ts_server = new mod_fast.FastServer({
 	    'log': tctx.ts_log.child({ 'component': 'FastServer' }),

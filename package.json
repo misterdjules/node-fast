@@ -1,7 +1,7 @@
 {
 	"name": "fast",
 	"description": "streaming JSON RPC over TCP",
-	"version": "2.2.4",
+	"version": "2.3.0",
 	"main": "./lib/fast.js",
 	"repository": {
 		"type": "git",
@@ -23,7 +23,9 @@
 		"verror": "^1.7.0"
 	},
 	"devDependencies": {
-		"forkexec": "^1.0.0"
+		"artedi": "1.0.0",
+		"forkexec": "^1.0.0",
+		"restify": "5.2.0"
 	},
 	"optionalDependencies": {
 	    "dtrace-provider": "^0.6.0"

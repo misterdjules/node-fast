@@ -97,6 +97,25 @@ The client and server only provide functions; you have to hook this up to a kang
 server.  The built-in demo server ("fastserve") and benchmarking tool
 ("fastbench") demonstrate how to do that.
 
+The Kang and metric collection (see below) functionality are served through the
+same [restify](https://github.com/restify/restify) server in "fastserve," but
+that is not required. Optionally, Kang can be served using the `knStartServer`
+function provided by the Kang library.
+
+### Metric Collection
+
+The Fast server optionally collects some basic request metrics using
+[node-artedi](https://github.com/joyent/node-artedi).
+
+The metrics collected by the fast server are:
+
+* total request count
+* latency of requests, implemented as a histogram
+
+You can pass an artedi-style metric collector into the Fast server constructor
+to enable metric collection. An example of how to do this is included in the
+built-in demo server ("fastserve").
+
 ### DTrace probes
 
 The Fast client and server provide DTrace probes and scripts in the "bin"
@@ -296,6 +315,7 @@ Name            | Type         | Meaning
 --------------- | ------------ | -------
 `log`           | object       | [bunyan](https://github.com/trentm/node-bunyan)-style logger
 `server`        | `net.Socket` | underlying server socket
+`collector`     | object       | [artedi](https://github.com/joyent/node-artedi)-style metric collector
 
 Public methods:
 

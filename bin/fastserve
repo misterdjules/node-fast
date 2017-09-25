@@ -7,7 +7,7 @@
  */
 
 /*
- * Copyright (c) 2016, Joyent, Inc.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 /*
@@ -15,6 +15,7 @@
  */
 
 var mod_assertplus = require('assert-plus');
+var mod_artedi = require('artedi');
 var mod_bunyan = require('bunyan');
 var mod_cmdutil = require('cmdutil');
 var mod_fastdemo = require('../lib/demo_server');
@@ -22,8 +23,9 @@ var mod_fastserver = require('../lib/fast_server');
 var mod_kang = require('kang');
 var mod_net = require('net');
 var mod_os = require('os');
+var mod_restify = require('restify');
 
-var KANG_PORT = 16519;
+var MONITOR_PORT = 16519;
 
 var usageMessage = [
     'Start a Fast protocol server supporting a few basic RPC calls.  PORT is ',
@@ -52,18 +54,24 @@ function main()
 
 	fastDemoServer({
 	    'fastPort': port,
-	    'kangPort': KANG_PORT
+	    'monitorPort': MONITOR_PORT
 	});
 }
 
 function fastDemoServer(args)
 {
-	var fastPort, log, sock, fastserver;
-	var kangPort, kangserver;
+	var fastPort, log, sock, collector, fastserver;
+	var monitorPort;
 
 	mod_assertplus.object(args, 'args');
 	mod_assertplus.number(args.fastPort, 'args.fastPort');
-	mod_assertplus.number(args.kangPort, 'args.kangPort');
+	mod_assertplus.number(args.monitorPort, 'args.monitorPort');
+
+	collector = mod_artedi.createCollector({
+	    'labels': {
+		'component': 'fastserve'
+	    }
+	});
 
 	log = new mod_bunyan({
 	    'name': 'fastserve',
@@ -74,6 +82,7 @@ function fastDemoServer(args)
 	sock = mod_net.createServer({ 'allowHalfOpen': true });
 	fastserver = new mod_fastserver.FastServer({
 	    'log': log,
+	    'collector': collector,
 	    'server': sock
 	});
 
@@ -82,15 +91,14 @@ function fastDemoServer(args)
 	});
 
 	fastPort = args.fastPort;
-	kangPort = args.kangPort;
+	monitorPort = args.monitorPort;
 	sock.listen(fastPort, function () {
 		var nsigs = 0;
 
 		log.info({ 'fastPort': fastPort },
 		    'listening for fast requests');
 
-		mod_kang.knStartServer({
-		    'port': kangPort,
+		var kangOpts = {
 		    'uri_base': '/kang',
 		    'service_name': 'fastserve',
 		    'version': '1.0.0',
@@ -99,20 +107,38 @@ function fastDemoServer(args)
 		    'list_objects': fastserver.kangListObjects.bind(fastserver),
 		    'get': fastserver.kangGetObject.bind(fastserver),
 		    'stats': fastserver.kangStats.bind(fastserver)
-		}, function (err, server) {
-			mod_assertplus.ok(!err);
-			kangserver = server;
-			log.info({ 'kangPort': kangPort },
-			    'listening for kang requests');
-			if (nsigs > 0) {
-				kangserver.close();
-			}
+		};
+
+		var monitor_server = mod_restify.createServer({
+		    name: 'monitor'
+		});
+		monitor_server.get('/metrics', function (req, res, next) {
+		    req.on('end', function () {
+			collector.collect(mod_artedi.FMT_PROM,
+			    function (err, metrics) {
+				if (err) {
+				    next(err);
+				    return;
+				}
+				res.setHeader('Content-Type',
+				    'text/plain; version=0.0.4');
+				res.send(metrics);
+				next();
+			});
+		    });
+		    req.resume();
+		});
+
+		monitor_server.get('/kang/.*',
+		    mod_kang.knRestifyHandler(kangOpts));
+		monitor_server.listen(monitorPort, '0.0.0.0', function () {
+			log.info({ 'monitorPort': monitorPort },
+			    'listening for kang and metric requests');
 		});
 
 		process.on('SIGINT', function () {
 			if (++nsigs == 1) {
-				if (kangserver)
-					kangserver.close();
+				monitor_server.close();
 				sock.close();
 				fastserver.close();
 			}

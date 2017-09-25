@@ -4,6 +4,10 @@
 
 No changes.
 
+## v2.3.0
+
+* #9 node-fast could track basic request metrics
+
 ## v2.2.4
 
 * #7 fsr_context isn't always unpiped from fsr_encoder, which causes memory leaks
