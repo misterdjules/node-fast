@@ -4,6 +4,9 @@
 
 No changes.
 
+## v2.3.1
+* #11 add RPC method name to metrics
+
 ## v2.3.0
 
 * #9 node-fast could track basic request metrics
