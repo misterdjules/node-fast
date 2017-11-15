@@ -2,9 +2,10 @@
 
 ## Not yet released.
 
-No changes.
+* #12 want support for node v6.12.0
 
 ## v2.3.1
+
 * #11 add RPC method name to metrics
 
 ## v2.3.0

@@ -16,7 +16,7 @@
 		"jsprim": "^1.2.2",
 		"kang": "^1.1.0",
 		"lstream": "0.0.4",
-		"microtime": "2.0.0",
+		"microtime": "2.1.6",
 		"posix-getopt": "1.2.0",
 		"strsplit": "^1.0.0",
 		"vasync": "^1.6.3",
